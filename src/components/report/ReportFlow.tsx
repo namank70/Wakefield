@@ -120,6 +120,7 @@ export function ReportFlow() {
         reporterId: "scout-1",
         attachToIssueId,
       });
+      window.dispatchEvent(new Event("wakefield:data-changed"));
       setStep("done");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The report was not created. You can retry.");

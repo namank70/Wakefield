@@ -225,6 +225,17 @@ export const campusStore = {
     ready = true;
     publish();
   },
+  replaceFromMapState(state: MapState) {
+    persisted = {
+      ...persisted,
+      issues: state.issues,
+      reports: state.reports,
+      photos: state.photos,
+      events: state.events,
+    };
+    ready = true;
+    publish();
+  },
   setPanel(next: CampusSnapshot["panel"]) {
     panel = next;
     publish();

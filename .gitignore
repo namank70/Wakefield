@@ -41,3 +41,5 @@ yarn-error.log*
 /scripts/.cache/
 *.tsbuildinfo
 next-env.d.ts
+.data/
+data/

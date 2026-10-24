@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AnalysisResult,
   CreateReportInput,
@@ -16,7 +18,7 @@ import type {
   VerificationInput,
 } from "@/lib/types";
 
-type StoredPhoto = { blob: Blob; campusId: string; imagePath: string; createdAt: string };
+type StoredPhoto = { blob: Blob | null; campusId: string; imagePath: string; filePath: string; mimeType: string; createdAt: string };
 
 const regions = [
   { id: "library", name: "MLK Library" },
@@ -31,6 +33,49 @@ const reports = new Map<string, Report>();
 const photoEvidence = new Map<string, PhotoEvidence>();
 const events: StatusEvent[] = [];
 const analysisCache = new Map<string, AnalysisResult>();
+
+const dataDirectory = join(process.cwd(), "data");
+const stateFile = join(dataDirectory, "wakefield-state.json");
+const uploadDirectory = join(dataDirectory, "uploads");
+
+type PersistedState = {
+  photos: Array<Omit<StoredPhoto, "blob">>;
+  issues: Issue[];
+  reports: Report[];
+  photoEvidence: PhotoEvidence[];
+  events: StatusEvent[];
+};
+
+function saveState() {
+  mkdirSync(uploadDirectory, { recursive: true });
+  const state: PersistedState = {
+    photos: [...photos.values()].map((photo) => {
+      const { blob, ...metadata } = photo;
+      void blob;
+      return metadata;
+    }),
+    issues: [...issues.values()],
+    reports: [...reports.values()],
+    photoEvidence: [...photoEvidence.values()],
+    events: [...events],
+  };
+  writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf8");
+}
+
+function loadState() {
+  try {
+    const state = JSON.parse(readFileSync(stateFile, "utf8")) as PersistedState;
+    for (const photo of state.photos ?? []) photos.set(photo.imagePath.split("/").pop() ?? id("photo"), { ...photo, blob: null });
+    for (const issue of state.issues ?? []) issues.set(issue.id, issue);
+    for (const report of state.reports ?? []) reports.set(report.id, report);
+    for (const evidence of state.photoEvidence ?? []) photoEvidence.set(evidence.id, evidence);
+    events.push(...(state.events ?? []));
+  } catch {
+    // A first run starts with an empty local repository.
+  }
+}
+
+loadState();
 
 const severityScore = { low: 1, medium: 2, high: 3, urgent: 10 } as const;
 const unresolved = new Set<IssueStatus>(["open", "in_progress", "awaiting_verification"]);
@@ -92,9 +137,13 @@ export async function uploadPhoto(blob: Blob, campusId: string): Promise<UploadR
   if (!blob.type.startsWith("image/")) jsonError("Only image files are supported.", 415);
   if (blob.size > 10 * 1024 * 1024) jsonError("Image exceeds the 10 MB limit.", 413);
   const photoId = id("photo");
-  const imagePath = `session/${campusId}/${photoId}`;
-  photos.set(photoId, { blob, campusId, imagePath, createdAt: now() });
-  return { photoId, imagePath, storage: "session" };
+  const imagePath = `data/uploads/${photoId}`;
+  const filePath = join(process.cwd(), imagePath);
+  mkdirSync(uploadDirectory, { recursive: true });
+  writeFileSync(filePath, Buffer.from(await blob.arrayBuffer()));
+  photos.set(photoId, { blob, campusId, imagePath, filePath, mimeType: blob.type, createdAt: now() });
+  saveState();
+  return { photoId, imagePath, storage: "remote" };
 }
 
 export async function analyzePhoto(photoId: string, context: { campusId: string; latitude?: number; longitude?: number; regionId?: string; buildingId?: string }) {
@@ -104,8 +153,9 @@ export async function analyzePhoto(photoId: string, context: { campusId: string;
   if (existing) return existing;
 
   if (process.env.EAISER_API_URL) {
+    const image = stored.blob ?? new Blob([readFileSync(stored.filePath)], { type: stored.mimeType });
     const body = new FormData();
-    body.append("image", new Blob([await stored.blob.arrayBuffer()], { type: stored.blob.type }), photoId);
+    body.append("image", image, photoId);
     body.append("context", JSON.stringify(context));
     const response = await fetch(process.env.EAISER_API_URL, {
       method: "POST",
@@ -170,6 +220,7 @@ export function createReport(input: CreateReportInput): CreateReportResponse {
   reports.set(report.id, report);
   if (input.photoId) photoEvidence.set(input.photoId, { id: id("evidence"), issueId: issue.id, reportId: report.id, kind: duplicate ? "evidence" : "before", storagePath: photos.get(input.photoId)?.imagePath ?? input.photoId, createdAt: timestamp });
   events.push({ id: id("event"), issueId: issue.id, actorId: input.reporterId, actorRole: "student", fromStatus: duplicate ? issue.status : null, toStatus: issue.status, note: duplicate ? "Evidence added to an existing signal." : "Signal submitted.", createdAt: timestamp });
+  saveState();
   return { reportId, issueId: issue.id, duplicate, matchedIssueId: duplicate ? issue.id : null, reportCount: issue.reportCount, region: regionState(issue.regionId), analysis: { ...input.analysis, category } };
 }
 
@@ -193,6 +244,7 @@ export function updateIssueStatus(issueId: string, status: IssueStatus, note = "
   issue.updatedAt = timestamp;
   issue.resolvedAt = status === "resolved" ? timestamp : issue.resolvedAt;
   events.push({ id: id("event"), issueId, actorId: "responder-1", actorRole: "university", fromStatus: previous, toStatus: status, note: note || "Issue status updated.", createdAt: timestamp });
+  saveState();
   return issueDetail(issueId);
 }
 

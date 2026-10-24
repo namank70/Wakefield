@@ -18,7 +18,7 @@ Open http://localhost:3000.
 | --- | --- | --- |
 | `NEXT_PUBLIC_DATA_MODE` | `live` | `live` uses the integrated same-origin API. Set `mock` only for the offline demo. |
 | `NEXT_PUBLIC_DEMO_MODE` | `true` | Shows the demo controls and the “Demo data” label. |
-| `NEXT_PUBLIC_API_BASE_URL` | empty | Required only when the data mode is `live`. |
+| `NEXT_PUBLIC_API_BASE_URL` | empty | Optional for `live`; empty uses the same-origin Next.js API. |
 
 Phone camera tests need a secure context:
 
@@ -56,7 +56,7 @@ With `NEXT_PUBLIC_DEMO_MODE=true`, the panel can reset the map, add a Library si
 
 ## Live adapter
 
-Set `NEXT_PUBLIC_DATA_MODE=live` and `NEXT_PUBLIC_API_BASE_URL`. Feature components keep calling `getClient()` from `src/lib/api/index.ts`. The live module is the only place that fetches:
+Set `NEXT_PUBLIC_DATA_MODE=live` to use the integrated API. Leave `NEXT_PUBLIC_API_BASE_URL` empty for the same-origin routes, or set it when deploying the API separately. Feature components keep calling `getClient()` from `src/lib/api/index.ts`. The live module is the only place that fetches:
 
 - `POST /api/uploads`
 - `POST /api/analyze`

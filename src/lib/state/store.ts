@@ -2,6 +2,7 @@ import { bearing, destination, point } from "@turf/turf";
 import { evidenceBonus, isUnresolved, revealForIssues } from "@/lib/activation/reveal";
 import { clearPreviews, previewUrl, readBlobWithProgress, rememberPreview } from "@/lib/api/images";
 import { activationThreshold, campusId, duplicateRule } from "@/lib/config/display";
+import { creditBalance, rewards, stepSeverity } from "@/lib/health/score";
 import { isInsideReporting, landmarks, metersBetween, nearestLandmark, regionIdFor, regionNameFor, seededLibraryPin } from "@/lib/geo/campus";
 import type {
   AnalysisResult,
@@ -9,8 +10,10 @@ import type {
   CreateReportResponse,
   DuplicateInput,
   DuplicateSuggestion,
+  CreditEvent,
   Issue,
   IssueDetail,
+  IssueStatus,
   LocationSource,
   MapState,
   PhotoEvidence,
@@ -20,6 +23,7 @@ import type {
   StatusEvent,
   UploadProgress,
   UploadResult,
+  VerificationInput,
 } from "@/lib/types";
 
 const storageKey = "wakefield.mock.v1";
@@ -29,7 +33,10 @@ type Persisted = {
   reports: Report[];
   photos: PhotoEvidence[];
   events: StatusEvent[];
+  credits: CreditEvent[];
 };
+
+export type Desk = "student" | "university";
 
 type ViewCommand = {
   id: number;
@@ -49,7 +56,8 @@ export type DraftLocation = {
 export type CampusSnapshot = Persisted & {
   ready: boolean;
   selectedIssueId: string | null;
-  panel: "map" | "signals";
+  panel: "map" | "signals" | "fixing" | "redeem";
+  desk: Desk;
   previewLevel: RevealLevel | null;
   pendingSignalId: string | null;
   notice: string | null;
@@ -59,12 +67,13 @@ export type CampusSnapshot = Persisted & {
   reportOpen: boolean;
 };
 
-const emptyPersisted = (): Persisted => ({ issues: [], reports: [], photos: [], events: [] });
+const emptyPersisted = (): Persisted => ({ issues: [], reports: [], photos: [], events: [], credits: [] });
 
 let persisted: Persisted = emptyPersisted();
 let ready = false;
 let selectedIssueId: string | null = null;
 let panel: CampusSnapshot["panel"] = "map";
+let desk: Desk = "student";
 let previewLevel: RevealLevel | null = null;
 let pendingSignalId: string | null = null;
 let notice: string | null = null;
@@ -85,6 +94,7 @@ function snapshot(): CampusSnapshot {
     ...persisted,
     selectedIssueId,
     panel,
+    desk,
     previewLevel,
     pendingSignalId,
     notice,
@@ -103,6 +113,8 @@ const serverSnapshot: CampusSnapshot = {
   events: [],
   selectedIssueId: null,
   panel: "map",
+  desk: "student",
+  credits: [],
   previewLevel: null,
   pendingSignalId: null,
   notice: null,
@@ -135,6 +147,7 @@ function load(): Persisted {
       reports: parsed.reports ?? [],
       photos: parsed.photos ?? [],
       events: parsed.events ?? [],
+      credits: parsed.credits ?? [],
     };
   } catch {
     return emptyPersisted();
@@ -143,6 +156,18 @@ function load(): Persisted {
 
 function nid(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+const transitions: Record<IssueStatus, IssueStatus[]> = {
+  open: ["in_progress"],
+  in_progress: ["awaiting_verification"],
+  awaiting_verification: ["resolved", "reopened"],
+  resolved: [],
+  reopened: ["in_progress"],
+};
+
+function credit(actorId: string, issueId: string | null, reason: CreditEvent["reason"], delta: number, label: string): CreditEvent {
+  return { id: nid("credit"), actorId, issueId, reason, delta, label, createdAt: new Date().toISOString() };
 }
 
 function regionState(regionId: string): RegionState {
@@ -202,6 +227,12 @@ export const campusStore = {
   },
   setPanel(next: CampusSnapshot["panel"]) {
     panel = next;
+    publish();
+  },
+  setDesk(next: Desk) {
+    desk = next;
+    if (next === "university") panel = "fixing";
+    else if (panel === "fixing" || panel === "redeem") panel = "map";
     publish();
   },
   selectIssue(issueId: string | null, fly = false) {
@@ -357,7 +388,7 @@ export const campusStore = {
       const existing = persisted.issues.find((item) => item.id === input.attachToIssueId);
       if (!existing) throw new Error("The suggested signal is no longer on the map.");
       duplicate = true;
-      issue = { ...existing, reportCount: existing.reportCount + 1, updatedAt: now };
+      issue = stepSeverity({ ...existing, reportCount: existing.reportCount + 1, updatedAt: now });
     } else {
       const building = input.buildingId ?? nearestLandmark(input.latitude, input.longitude)?.id ?? null;
       issue = {
@@ -410,9 +441,24 @@ export const campusStore = {
     const issues = input.attachToIssueId
       ? persisted.issues.map((item) => (item.id === issue.id ? issue : item))
       : [...persisted.issues, issue];
-    persisted = { issues, reports: [...persisted.reports, report], photos, events: [...persisted.events, event] };
+    const earned = credit(
+      input.reporterId,
+      issue.id,
+      duplicate ? "confirm-report" : "first-report",
+      duplicate ? 2 : 10,
+      duplicate ? "Confirmed an existing signal" : "First report",
+    );
+    persisted = {
+      issues,
+      reports: [...persisted.reports, report],
+      photos,
+      events: [...persisted.events, event],
+      credits: [...persisted.credits, earned],
+    };
     pendingSignalId = issue.id;
-    notice = duplicate ? "Evidence added to the existing signal." : "Signal submitted. The map stayed where you left it.";
+    notice = duplicate
+      ? `Evidence added. +${earned.delta} credits.${issue.escalated ? " Repeated reports moved this signal up the fixing list." : ""}`
+      : `Signal submitted. +${earned.delta} credits. The map stayed where you left it.`;
     save();
     publish();
     return {
@@ -460,39 +506,42 @@ export const campusStore = {
     if (!persisted.issues.some((issue) => issue.id === "issue-demo-library")) this.addLibrarySignal();
     const issue = persisted.issues.find((item) => item.id === "issue-demo-library");
     if (!issue) return;
-    const already = persisted.reports.some((report) => report.issueId === issue.id && report.reporterId === "scout-2");
-    if (already) {
+    const reporters = new Set(persisted.reports.filter((report) => report.issueId === issue.id).map((report) => report.reporterId));
+    const reporterId = !reporters.has("scout-2") ? "scout-2" : !reporters.has("scout-3") ? "scout-3" : null;
+    if (!reporterId) {
       selectedIssueId = issue.id;
-      notice = "Supporting evidence from a second student is already on this signal.";
+      notice = "Two independent confirmations are already on this signal.";
       publish();
       return;
     }
     const now = new Date().toISOString();
     const report: Report = {
-      id: "report-demo-library-2",
+      id: `report-demo-library-${reporterId}`,
       issueId: issue.id,
-      reporterId: "scout-2",
+      reporterId,
       photoId: null,
       latitude: issue.latitude,
       longitude: issue.longitude,
       locationSource: "manual",
       locationAccuracyMeters: null,
-      studentDescription: "Second student confirms the scooters are still blocking the library walkway.",
-      aiConfidence: issue.tags.length ? 0.86 : 0.86,
+      studentDescription: "Another student confirms the scooters are still blocking the library walkway.",
+      aiConfidence: 0.86,
       analysisProvider: "mock",
       createdAt: now,
     };
-    const updated = { ...issue, reportCount: issue.reportCount + 1, updatedAt: now };
+    const updated = stepSeverity({ ...issue, reportCount: issue.reportCount + 1, updatedAt: now });
+    const earned = credit(reporterId, issue.id, "confirm-report", 2, "Confirmed an existing signal");
     persisted = {
       ...persisted,
       issues: persisted.issues.map((item) => (item.id === issue.id ? updated : item)),
       reports: [...persisted.reports, report],
+      credits: [...persisted.credits, earned],
       events: [
         ...persisted.events,
         {
           id: nid("event"),
           issueId: issue.id,
-          actorId: "scout-2",
+          actorId: reporterId,
           actorRole: "student",
           fromStatus: issue.status,
           toStatus: issue.status,
@@ -503,7 +552,9 @@ export const campusStore = {
     };
     selectedIssueId = issue.id;
     pendingSignalId = null;
-    notice = "Independent evidence added to the library signal. Repeated reports from the same demo identity would not raise the cap.";
+    notice = updated.escalated && !issue.escalated
+      ? "A third report moved this signal up the fixing list."
+      : "Independent evidence added to the library signal. Repeated reports from the same demo identity would not raise the cap.";
     save();
     publish();
   },
@@ -558,6 +609,108 @@ export const campusStore = {
       : "The urgent engineering signal is already on the map.";
     publish();
     save();
+  },
+  updateIssueStatus(issueId: string, status: IssueStatus, note = "") {
+    const issue = persisted.issues.find((item) => item.id === issueId);
+    if (!issue) throw new Error("Signal not found");
+    if (!transitions[issue.status].includes(status)) {
+      notice = "That update is not available for this signal.";
+      publish();
+      throw new Error(notice);
+    }
+    const now = new Date().toISOString();
+    const updated: Issue = {
+      ...issue,
+      status,
+      updatedAt: now,
+      resolvedAt: status === "resolved" ? now : issue.resolvedAt,
+    };
+    persisted = {
+      ...persisted,
+      issues: persisted.issues.map((item) => (item.id === issue.id ? updated : item)),
+      events: [
+        ...persisted.events,
+        {
+          id: nid("event"),
+          issueId: issue.id,
+          actorId: "responder-1",
+          actorRole: "university",
+          fromStatus: issue.status,
+          toStatus: status,
+          note: note || (status === "in_progress" ? "University claimed this signal." : "University marked this signal fixed."),
+          createdAt: now,
+        },
+      ],
+    };
+    notice = status === "awaiting_verification"
+      ? "Marked fixed. Health returns while students confirm the repair."
+      : "Signal claimed. The map stayed where it is.";
+    save();
+    publish();
+    return issueDetail(issueId);
+  },
+  verifyIssue(issueId: string, input: VerificationInput) {
+    const issue = persisted.issues.find((item) => item.id === issueId);
+    if (!issue) throw new Error("Signal not found");
+    const status: IssueStatus = input.confirmed ? "resolved" : "reopened";
+    if (!transitions[issue.status].includes(status)) {
+      notice = "This signal is not waiting for confirmation.";
+      publish();
+      throw new Error(notice);
+    }
+    const now = new Date().toISOString();
+    const updated: Issue = {
+      ...issue,
+      status,
+      updatedAt: now,
+      resolvedAt: input.confirmed ? now : null,
+    };
+    const credits = [
+      ...persisted.credits,
+      credit(input.actorId, issue.id, input.confirmed ? "verify" : "still-unresolved", input.confirmed ? 15 : 10, input.confirmed ? "Verified a repair" : "Marked a repair incomplete"),
+    ];
+    if (input.confirmed) {
+      const first = persisted.reports.find((report) => report.issueId === issue.id);
+      if (first) credits.push(credit(first.reporterId, issue.id, "resolved", 5, "Report reached resolved"));
+    }
+    persisted = {
+      ...persisted,
+      issues: persisted.issues.map((item) => (item.id === issue.id ? updated : item)),
+      credits,
+      events: [
+        ...persisted.events,
+        {
+          id: nid("event"),
+          issueId: issue.id,
+          actorId: input.actorId,
+          actorRole: "student",
+          fromStatus: issue.status,
+          toStatus: status,
+          note: input.confirmed ? "Student verified the repair." : "Student marked the repair incomplete.",
+          createdAt: now,
+        },
+      ],
+    };
+    notice = input.confirmed ? "Repair verified. Health stays restored." : "Marked still there. Health drops until it is fixed again.";
+    save();
+    publish();
+    return issueDetail(issueId);
+  },
+  redeem(actorId: string, rewardId: string) {
+    const reward = rewards.find((item) => item.id === rewardId);
+    if (!reward) throw new Error("That reward is not in the demo catalog.");
+    if (creditBalance(persisted.credits, actorId) < reward.cost) {
+      notice = "Not enough credits for that reward.";
+      publish();
+      throw new Error(notice);
+    }
+    persisted = {
+      ...persisted,
+      credits: [...persisted.credits, credit(actorId, null, "redeem", -reward.cost, reward.label)],
+    };
+    notice = `Redeemed ${reward.label}. This catalog is demo data, not a real vendor.`;
+    save();
+    publish();
   },
 };
 
@@ -629,6 +782,7 @@ function ensureIssue(input: {
     reports: [...persisted.reports, report],
     photos: persisted.photos,
     events: [...persisted.events, event],
+    credits: [...persisted.credits, credit(input.reporterId, issue.id, "first-report", 10, "First report")],
   };
   selectedIssueId = issue.id;
   return true;

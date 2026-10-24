@@ -1,15 +1,18 @@
 "use client";
 
 import { DemoControls } from "@/components/demo/DemoControls";
+import { FixingList } from "@/components/issues/FixingList";
 import { IssueDrawer } from "@/components/issues/IssueDrawer";
 import { SignalList } from "@/components/issues/SignalList";
+import { RedeemPanel } from "@/components/rewards/RedeemPanel";
 import { ReportFlow } from "@/components/report/ReportFlow";
 import { landmarks } from "@/data/geo/landmarks";
 import { demoMode } from "@/lib/config/env";
+import { campusHealth, creditBalance, healthTone } from "@/lib/health/score";
 import { getBearing, subscribeBearing } from "@/lib/map/bearing";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
-import { Camera, Crosshair, Map as MapIcon, Minus, Plus, Radio, RotateCw } from "lucide-react";
+import { Camera, Crosshair, Map as MapIcon, Minus, Plus, Radio, RotateCw, Wrench } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useState, useSyncExternalStore } from "react";
 
@@ -33,6 +36,8 @@ export function AppShell() {
   const campus = useCampus();
   const selected = campus.issues.find((issue) => issue.id === campus.selectedIssueId) ?? null;
   const openCount = campus.issues.filter((issue) => issue.status !== "resolved").length;
+  const health = campusHealth(campus.issues);
+  const points = creditBalance(campus.credits, "scout-1");
   const [query, setQuery] = useState("");
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -49,7 +54,31 @@ export function AppShell() {
         </div>
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan">{demoMode ? "Demo data" : "Campus listening"}</p>
         <p className="font-mono text-[11px] text-slate-300">{openCount} open</p>
-        <p className="ml-auto hidden font-mono text-[11px] uppercase tracking-[0.18em] text-slate-300 md:block">The campus wakes in layers</p>
+        <div className="wake-campus-health" role="meter" aria-label="Campus health" aria-valuenow={health} aria-valuemin={0} aria-valuemax={100}>
+          <span>Campus</span>
+          <i className="wake-health" aria-hidden="true"><i style={{ width: `${health}%`, background: healthTone(health) }} /></i>
+          <strong>{health}</strong>
+        </div>
+        {campus.desk === "student" ? (
+          <button
+            key={points}
+            type="button"
+            className="wake-points"
+            onClick={() => {
+              if (campus.panel === "redeem") campusStore.setPanel("map");
+              else {
+                campusStore.selectIssue(null, false);
+                campusStore.setPanel("redeem");
+              }
+            }}
+          >
+            {points} pts
+          </button>
+        ) : null}
+        <div className="wake-desk" role="group" aria-label="Desk">
+          <button type="button" aria-pressed={campus.desk === "student"} onClick={() => campusStore.setDesk("student")}>Student</button>
+          <button type="button" aria-pressed={campus.desk === "university"} onClick={() => campusStore.setDesk("university")}>University</button>
+        </div>
         <div className="ml-auto flex gap-1 md:ml-0 md:hidden">
           <button type="button" className="wake-icon-button" aria-label="Map" onClick={() => campusStore.setPanel("map")}>
             <MapIcon size={16} />
@@ -68,6 +97,12 @@ export function AppShell() {
           <Radio size={18} />
           <span>Signals</span>
         </button>
+        {campus.desk === "university" ? (
+          <button type="button" aria-label="Fixing list" className={campus.panel === "fixing" ? "is-active" : ""} onClick={() => campusStore.setPanel("fixing")}>
+            <Wrench size={18} />
+            <span>Fixing</span>
+          </button>
+        ) : null}
       </nav>
       <div className="absolute inset-0">
         <CampusMap />
@@ -116,11 +151,15 @@ export function AppShell() {
         <p><i className="swatch urgent" /> Urgent</p>
         <p className="wake-legend-note">Quiet does not mean verified clear.</p>
       </div>
-      <button type="button" className={`wake-camera ${selected ? "above-sheet" : ""}`} onClick={() => campusStore.openReport()}>
-        <Camera size={18} />
-        Report a signal
-      </button>
+      {campus.desk === "student" ? (
+        <button type="button" className={`wake-camera ${selected ? "above-sheet" : ""}`} onClick={() => campusStore.openReport()}>
+          <Camera size={18} />
+          Report a signal
+        </button>
+      ) : null}
       {campus.panel === "signals" ? <SignalList /> : null}
+      {campus.panel === "fixing" ? <FixingList /> : null}
+      {campus.panel === "redeem" ? <RedeemPanel /> : null}
       {selected ? <IssueDrawer issue={selected} /> : null}
       {campus.reportOpen ? <ReportFlow /> : null}
       {demoMode ? <DemoControls /> : null}

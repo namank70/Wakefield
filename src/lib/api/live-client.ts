@@ -6,9 +6,11 @@ import type {
   DuplicateInput,
   DuplicateSuggestion,
   IssueDetail,
+  IssueStatus,
   MapState,
   UploadProgress,
   UploadResult,
+  VerificationInput,
   WakefieldClient,
 } from "@/lib/types";
 
@@ -37,6 +39,8 @@ import type {
  *
  * GET /api/map-state?campusId=sjsu -> MapState
  * GET /api/issues/:issueId -> IssueDetail
+ * PATCH /api/issues/:issueId/status  JSON { status, note }
+ * POST /api/issues/:issueId/verify   JSON VerificationInput
  */
 
 function base() {
@@ -123,6 +127,24 @@ export const liveClient: WakefieldClient = {
   },
   async getIssue(issueId) {
     const response = await fetch(`${base()}/api/issues/${encodeURIComponent(issueId)}`);
+    if (!response.ok) await readError(response);
+    return (await response.json()) as IssueDetail;
+  },
+  async updateIssueStatus(issueId: string, status: IssueStatus, note?: string) {
+    const response = await fetch(`${base()}/api/issues/${encodeURIComponent(issueId)}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, note }),
+    });
+    if (!response.ok) await readError(response);
+    return (await response.json()) as IssueDetail;
+  },
+  async verifyIssue(issueId: string, input: VerificationInput) {
+    const response = await fetch(`${base()}/api/issues/${encodeURIComponent(issueId)}/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
     if (!response.ok) await readError(response);
     return (await response.json()) as IssueDetail;
   },

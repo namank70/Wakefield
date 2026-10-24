@@ -4,6 +4,7 @@ import { landmarks } from "@/data/geo/landmarks";
 import { categories, mapZoom } from "@/lib/config/display";
 import { metersBetween } from "@/lib/geo/distance";
 import { movementBoundary, namedBuildings, nearestLandmark, reportingBoundary, streetLabelCollection } from "@/lib/geo/campus";
+import { buildingHealth, healthTone } from "@/lib/health/score";
 import { publishBearing } from "@/lib/map/bearing";
 import { boundsOf, installNavigationLimits, pitched, prefersReducedMotion, runViewCommand } from "@/lib/map/navigation";
 import { ensureLayers, syncScene } from "@/lib/map/scene";
@@ -246,6 +247,23 @@ export default function CampusMap() {
         landmark.longitude,
         landmark.latitude,
       );
+    }
+
+    for (const place of buildingHealth(campus.issues)) {
+      if (place.health >= 100) continue;
+      const meter = document.createElement("div");
+      meter.className = "wake-building-health";
+      meter.setAttribute("aria-label", `${place.name} health ${place.health}`);
+      const track = document.createElement("span");
+      track.className = "wake-health";
+      const fill = document.createElement("span");
+      fill.style.width = `${place.health}%`;
+      fill.style.background = healthTone(place.health);
+      track.append(fill);
+      const label = document.createElement("em");
+      label.textContent = String(place.health);
+      meter.append(track, label);
+      add(meter, place.longitude, place.latitude, "bottom", [0, -28]);
     }
 
     if (campus.draftLocation) {

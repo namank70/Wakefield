@@ -8,4 +8,6 @@ export const mockClient: WakefieldClient = {
   createReport: async (input) => campusStore.createReport(input),
   getMapState: async () => campusStore.getMapState(),
   getIssue: async (issueId) => campusStore.getIssue(issueId),
+  updateIssueStatus: async (issueId, status, note) => campusStore.updateIssueStatus(issueId, status, note),
+  verifyIssue: async (issueId, input) => campusStore.verifyIssue(issueId, input),
 };

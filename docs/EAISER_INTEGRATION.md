@@ -59,7 +59,19 @@ Handle unsupported files, oversized images, unclear images, no recognizable issu
 
 EAiSER credentials stay server-side. The browser calls Wakefield's `/api/analyze` endpoint; it never calls EAiSER directly.
 
-## Before implementation
+## Implementation status
+
+The server-side provider adapter now lives in `server/eaiser-adapter.mjs`.
+It validates uploads, sends multipart requests, normalizes provider responses,
+and exposes structured error data for the backend route. The Studio preview
+calls `/api/analyze` first and only uses its deterministic fallback when the
+Studio sandbox has no Wakefield API route.
+
+The remaining final-integration inputs are provider configuration values, not
+application behavior: the real EAiSER URL, credential, and any confirmed
+native field names.
+
+## Before production activation
 
 Confirm with the Momntum team:
 

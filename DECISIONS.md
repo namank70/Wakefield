@@ -2,11 +2,11 @@
 
 ## Scope
 
-The newer brief wins where it disagrees with the older frontend brief. There is no campus health score, points, rewards, responder queue, padlock, or scan-line identity. Reveal is local to an issue. `region.active` in the report response stays in the shared contract and does not paint a whole region.
+The newer brief wins where it disagrees with the older frontend brief. Reveal is local to an issue. `region.active` in the report response stays in the shared contract and does not paint a whole region. Phase 2 on `frontend/phase-2` adds campus and building health, impact credits, a university fixing list, student verification, and a demo redeem catalog. There is still no leaderboard, padlock, or scan-line.
 
 ## Client
 
-Components call `getClient()`. `NEXT_PUBLIC_DATA_MODE=mock` is the default. The live module documents `POST /api/uploads`, `POST /api/analyze`, `POST /api/reports`, `GET /api/map-state?campusId=sjsu`, `GET /api/issues/:issueId`, and `POST /api/duplicates/suggest`. The duplicate route is not in the backend brief; the expected body is `DuplicateInput`. Phase 2 `updateIssueStatus` and `verifyIssue` stay off this client.
+Components call `getClient()`. `NEXT_PUBLIC_DATA_MODE=mock` is the default. The live module documents `POST /api/uploads`, `POST /api/analyze`, `POST /api/reports`, `GET /api/map-state?campusId=sjsu`, `GET /api/issues/:issueId`, and `POST /api/duplicates/suggest`. The duplicate route is not in the backend brief; the expected body is `DuplicateInput`. `updateIssueStatus` and `verifyIssue` are on the client. Mock mode writes the local store. Live mode calls `PATCH /api/issues/:issueId/status` and `POST /api/issues/:issueId/verify`.
 
 A confirmed duplicate adds a report and evidence to the existing issue. It does not add a pin. Mock duplicate rule: same category, within 30 meters, unresolved, and an existing report newer than 24 hours.
 

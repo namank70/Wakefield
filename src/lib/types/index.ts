@@ -59,6 +59,7 @@ export type Issue = {
   accessibilityImpact: boolean;
   reportCount: number;
   tags: string[];
+  escalated?: boolean;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
@@ -169,6 +170,23 @@ export type CreateReportInput = {
   attachToIssueId: string | null;
 };
 
+export type CreditReason = "first-report" | "confirm-report" | "resolved" | "verify" | "still-unresolved" | "redeem";
+
+export type CreditEvent = {
+  id: string;
+  actorId: string;
+  issueId: string | null;
+  reason: CreditReason;
+  delta: number;
+  label: string;
+  createdAt: string;
+};
+
+export type VerificationInput = {
+  confirmed: boolean;
+  actorId: string;
+};
+
 export type WakefieldClient = {
   uploadPhoto(file: Blob, onProgress: (update: UploadProgress) => void): Promise<UploadResult>;
   analyzePhoto(input: AnalyzePhotoInput): Promise<AnalysisResult>;
@@ -176,4 +194,6 @@ export type WakefieldClient = {
   createReport(input: CreateReportInput): Promise<CreateReportResponse>;
   getMapState(): Promise<MapState>;
   getIssue(issueId: string): Promise<IssueDetail>;
+  updateIssueStatus(issueId: string, status: IssueStatus, note?: string): Promise<IssueDetail>;
+  verifyIssue(issueId: string, input: VerificationInput): Promise<IssueDetail>;
 };

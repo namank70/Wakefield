@@ -33,7 +33,7 @@ type Persisted = {
 
 type ViewCommand = {
   id: number;
-  kind: "fit" | "fly" | "zoom-in" | "zoom-out";
+  kind: "fit" | "fly" | "zoom-in" | "zoom-out" | "rotate" | "reset-pose";
   latitude?: number;
   longitude?: number;
   zoom?: number;
@@ -236,6 +236,16 @@ export const campusStore = {
   requestZoom(direction: "zoom-in" | "zoom-out") {
     commandId += 1;
     viewCommand = { id: commandId, kind: direction };
+    publish();
+  },
+  requestRotate() {
+    commandId += 1;
+    viewCommand = { id: commandId, kind: "rotate" };
+    publish();
+  },
+  requestPoseReset() {
+    commandId += 1;
+    viewCommand = { id: commandId, kind: "reset-pose" };
     publish();
   },
   flyTo(latitude: number, longitude: number, zoom = 18) {

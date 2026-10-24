@@ -4,6 +4,7 @@ import { landmarks } from "@/data/geo/landmarks";
 import { categories, mapZoom } from "@/lib/config/display";
 import { metersBetween } from "@/lib/geo/distance";
 import { movementBoundary, namedBuildings, nearestLandmark, reportingBoundary, streetLabelCollection } from "@/lib/geo/campus";
+import { publishBearing } from "@/lib/map/bearing";
 import { boundsOf, installNavigationLimits, pitched, prefersReducedMotion, runViewCommand } from "@/lib/map/navigation";
 import { ensureLayers, syncScene } from "@/lib/map/scene";
 import { campusStore } from "@/lib/state/store";
@@ -101,9 +102,11 @@ export default function CampusMap() {
       if (!alive) return;
       ensureLayers(map);
       stopLimits = installNavigationLimits(map, movement, reporting);
+      publishBearing(map.getBearing());
       setZoom(map.getZoom());
       setReady(true);
     });
+    map.on("rotate", () => publishBearing(map.getBearing()));
     map.on("zoomend", () => setZoom(map.getZoom()));
     map.on("click", (event) => {
       if (!campusStore.getSnapshot().placingPin) return;

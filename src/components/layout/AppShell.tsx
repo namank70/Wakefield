@@ -6,16 +6,28 @@ import { SignalList } from "@/components/issues/SignalList";
 import { ReportFlow } from "@/components/report/ReportFlow";
 import { landmarks } from "@/data/geo/landmarks";
 import { demoMode } from "@/lib/config/env";
+import { getBearing, subscribeBearing } from "@/lib/map/bearing";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
-import { Camera, Crosshair, Map as MapIcon, Minus, Plus, Radio } from "lucide-react";
+import { Camera, Crosshair, Map as MapIcon, Minus, Plus, Radio, RotateCw } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 const CampusMap = dynamic(() => import("@/components/map/CampusMap"), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-[#070B14]" />,
 });
+
+function Compass() {
+  const bearing = useSyncExternalStore(subscribeBearing, getBearing, getBearing);
+  return (
+    <button type="button" className="wake-compass" aria-label="Reset map direction" onClick={() => campusStore.requestPoseReset()}>
+      <span className="wake-compass-rose" style={{ transform: `rotate(${-bearing}deg)` }}>
+        <span>N</span>
+      </span>
+    </button>
+  );
+}
 
 export function AppShell() {
   const campus = useCampus();
@@ -62,9 +74,7 @@ export function AppShell() {
       </div>
       <div className="wake-wash" aria-hidden="true" />
       <div className="wake-vignette" aria-hidden="true" />
-      <div className="wake-compass" aria-hidden="true">
-        <span>N</span>
-      </div>
+      <Compass />
       <div className="wake-search">
         <label className="sr-only" htmlFor="building-search">Search buildings</label>
         <input
@@ -94,6 +104,7 @@ export function AppShell() {
       <div className={`wake-controls ${selected ? "sheet-open" : ""}`}>
         <button type="button" aria-label="Zoom in" onClick={() => campusStore.requestZoom("zoom-in")}><Plus size={16} /></button>
         <button type="button" aria-label="Zoom out" onClick={() => campusStore.requestZoom("zoom-out")}><Minus size={16} /></button>
+        <button type="button" aria-label="Rotate map" onClick={() => campusStore.requestRotate()}><RotateCw size={16} /></button>
         <button type="button" aria-label="Fit campus" onClick={() => campusStore.requestFit()}><Crosshair size={16} /></button>
         <button type="button" onClick={() => campusStore.requestFit()}>Recenter</button>
       </div>

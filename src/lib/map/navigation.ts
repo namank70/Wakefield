@@ -41,6 +41,27 @@ export function pitched(reduced = prefersReducedMotion()) {
   return reduced ? { pitch: 0, bearing: 0 } : { pitch: cameraView.pitch, bearing: cameraView.bearing };
 }
 
+function easeOut(t: number) {
+  return 1 - (1 - t) ** 3;
+}
+
+const cameraMove = {
+  zoom: 480,
+  glide: 700,
+};
+
+export function tuneCamera(map: MapLibreMap) {
+  const reduced = prefersReducedMotion();
+  map.dragPan.enable({
+    linearity: reduced ? 0 : 0.35,
+    maxSpeed: 1200,
+    deceleration: 2800,
+    easing: easeOut,
+  });
+  map.scrollZoom.setWheelZoomRate(1 / 600);
+  map.scrollZoom.setZoomRate(1 / 160);
+}
+
 export function installNavigationLimits(map: MapLibreMap, movement: GeoJsonObject, reporting: GeoJsonObject) {
   const limit = boundsOf(movement);
   const campus = boundsOf(reporting);
@@ -55,6 +76,7 @@ export function installNavigationLimits(map: MapLibreMap, movement: GeoJsonObjec
       if (map.getZoom() < fitted.zoom) map.jumpTo({ zoom: fitted.zoom });
     }
     map.setMaxZoom(mapZoom.max);
+    tuneCamera(map);
   };
   apply();
   const pose = pitched();
@@ -70,6 +92,7 @@ export function installNavigationLimits(map: MapLibreMap, movement: GeoJsonObjec
     const next = pitched();
     map.setMaxPitch(next.pitch === 0 ? 0 : 60);
     map.easeTo({ pitch: next.pitch, bearing: next.bearing, duration: 0 });
+    tuneCamera(map);
   };
   window.addEventListener("resize", onResize);
   media.addEventListener("change", onMotion);
@@ -81,27 +104,36 @@ export function installNavigationLimits(map: MapLibreMap, movement: GeoJsonObjec
 
 export function runViewCommand(
   map: MapLibreMap,
-  command: { kind: "fit" | "fly" | "zoom-in" | "zoom-out"; latitude?: number; longitude?: number; zoom?: number },
+  command: { kind: "fit" | "fly" | "zoom-in" | "zoom-out" | "rotate" | "reset-pose"; latitude?: number; longitude?: number; zoom?: number },
   reporting: GeoJsonObject,
 ) {
   const pose = pitched();
-  const duration = prefersReducedMotion() ? 0 : 650;
+  const reduced = prefersReducedMotion();
+  const glide = reduced ? 0 : cameraMove.glide;
   if (command.kind === "fit") {
     map.fitBounds(boundsOf(reporting), {
       padding: { top: 88, bottom: 96, left: 80, right: 80 },
-      duration,
+      duration: glide,
       bearing: pose.bearing,
       pitch: pose.pitch,
+      easing: easeOut,
     });
+    return;
+  }
+  if (command.kind === "rotate") {
+    map.easeTo({ bearing: map.getBearing() + 45, duration: glide, easing: easeOut });
+    return;
+  }
+  if (command.kind === "reset-pose") {
+    map.easeTo({ bearing: pose.bearing, pitch: pose.pitch, duration: glide, easing: easeOut });
     return;
   }
   if (command.kind === "zoom-in" || command.kind === "zoom-out") {
     const next = map.getZoom() + (command.kind === "zoom-in" ? 0.5 : -0.5);
     map.easeTo({
       zoom: Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), next)),
-      duration: prefersReducedMotion() ? 0 : 280,
-      bearing: pose.bearing,
-      pitch: pose.pitch,
+      duration: reduced ? 0 : cameraMove.zoom,
+      easing: easeOut,
     });
     return;
   }
@@ -116,8 +148,8 @@ export function runViewCommand(
   map.easeTo({
     center: [longitude, latitude],
     zoom: Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), command.zoom ?? 17.5)),
-    duration,
-    bearing: pose.bearing,
     pitch: pose.pitch,
+    duration: glide,
+    easing: easeOut,
   });
 }

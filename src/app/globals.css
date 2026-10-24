@@ -564,7 +564,7 @@ button.wake-photo:hover {
   color: #c5d4e6;
 }
 
-.wake-compass {
+button.wake-compass {
   position: absolute;
   z-index: 30;
   right: 0.8rem;
@@ -573,19 +573,34 @@ button.wake-photo:hover {
   width: 2.6rem;
   height: 2.6rem;
   place-items: center;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
   background: radial-gradient(circle at 35% 28%, #24344f, #0c1424 68%);
   box-shadow: 0 10px 18px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.22);
   transform: perspective(80px) rotateX(18deg);
 }
 
-.wake-compass span {
+button.wake-compass:hover {
+  background: radial-gradient(circle at 35% 28%, #2c4060, #10192c 68%);
+}
+
+.wake-compass-rose {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  transition: transform 160ms ease-out;
+}
+
+.wake-compass-rose span {
   color: #f4f8fc;
   font-family: var(--font-display), sans-serif;
   font-size: 0.85rem;
 }
 
-.wake-compass::after {
+.wake-compass-rose::after {
   content: "";
   position: absolute;
   top: 0.32rem;

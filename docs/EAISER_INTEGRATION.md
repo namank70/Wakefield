@@ -37,7 +37,7 @@ Inputs:
 }
 ```
 
-`provider` must be one of `eaiser`, `cached`, or `mock` so the UI can distinguish an external result from saved labels or manual review.
+`provider` must be one of `ollama`, `eaiser`, `cached`, or `mock` so the UI can distinguish local vision inference, an external result, saved labels and manual review.
 
 ## Bounded taxonomy
 
@@ -63,7 +63,7 @@ EAiSER credentials stay server-side. The browser calls Wakefield's `/api/analyze
 
 The EAiSER Studio image-analysis namespace and live report-submission method have not been confirmed. Earlier attempts to call `EAiSER.image.analyze(file)` failed at runtime because `EAiSER.image` was undefined. No Studio source file should call that guessed method or claim an EAiSER result until the actual Studio runtime exposes and successfully runs a supported method.
 
-The standalone Next.js server adapter in `src/lib/server/wakefield.ts` can call a configured `EAISER_API_URL` and optional server-side `EAISER_API_KEY`. The provider endpoint, authentication format, and response schema still need confirmation from Momntum. Without that configuration, the server returns a manual-review starting point. It does not send a report to campus staff.
+The Next.js application now uses the local Ollama vision adapter in `src/lib/server/vision.ts` by default. It sends actual photo bytes to a local model and validates structured suggestions. See `docs/LOCAL_AI.md`. `ANALYSIS_PROVIDER=manual` explicitly selects manual review; an unavailable model returns an error and a reporter may choose manual review. The separate EAiSER adapter still requires a confirmed `EAISER_API_URL`, authentication and response schema from Momntum. Neither local inference nor a saved report sends a message to campus staff.
 
 ## Before production activation
 

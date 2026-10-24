@@ -10,6 +10,8 @@ if not exist "node_modules\next\package.json" (
 
 set "NEXT_PUBLIC_DATA_MODE=mock"
 set "NEXT_PUBLIC_GUIDED_MODE=true"
-echo Starting Wakefield at http://localhost:3000
-echo Local workspace mode is on. Reports, map activity, and rewards stay in this browser.
+set "ANALYSIS_PROVIDER=ollama"
+call node scripts\setup-local-ai.mjs --start
+echo Starting Wakefield. Open the Local address printed below.
+echo Reports, map activity, and rewards stay in this browser. Photo AI runs locally through Ollama.
 call npm.cmd run dev

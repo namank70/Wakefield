@@ -15,4 +15,4 @@ To run the GitHub application, use the repository's `scripts/run-wakefield.cmd` 
 
 ## Integration status
 
-The GitHub app's default local workspace stores report activity and impact points in the browser. Uploaded photos receive an editable local suggestion unless a real EAiSER provider is configured on the server. Reward claims deduct points and issue an in-app claim code; campus vendors are not connected to redeem those codes. These boundaries are reflected in the app rather than represented as live external services.
+The GitHub app's default local workspace stores report activity and impact points in the browser. Its Next.js server now connects to a local Ollama vision model for automatic category, severity and department suggestions; see `docs/LOCAL_AI.md` for setup. The model is independent of Studio and does not move with pasted static files. Reward claims deduct points and issue an in-app claim code; campus vendors are not connected to fulfill them.

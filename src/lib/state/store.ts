@@ -1,13 +1,12 @@
 import { bearing, destination, point } from "@turf/turf";
 import { evidenceBonus, isUnresolved, revealForIssues } from "@/lib/activation/reveal";
-import { clearPreviews, previewUrl, readBlobWithProgress, rememberPreview } from "@/lib/api/images";
+import { clearPreviews, forgetPhoto, previewUrl, readBlobWithProgress, rememberPreview } from "@/lib/api/images";
 import { activationThreshold, campusId, duplicateRule } from "@/lib/config/display";
 import { demoScenarios } from "@/lib/demo/scenarios";
 import type { DemoScenario } from "@/lib/demo/scenarios";
 import { creditBalance, rewards, stepSeverity } from "@/lib/health/score";
 import { isInsideReporting, landmarks, metersBetween, nearestLandmark, regionIdFor, regionNameFor, seededLibraryPin } from "@/lib/geo/campus";
 import type {
-  AnalysisResult,
   CreateReportInput,
   CreateReportResponse,
   DuplicateInput,
@@ -393,19 +392,6 @@ export const campusStore = {
     publish();
     return { photoId, imagePath: `session/${photoId}.jpg`, storage: "session" };
   },
-  async analyzePhoto(): Promise<AnalysisResult> {
-    await wait(700);
-    return {
-      category: "other",
-      summary: "Photo attached. Describe what needs attention and choose the right category before saving; this workspace does not inspect image contents.",
-      severity: "low",
-      department: "Manual review",
-      confidence: 0,
-      accessibilityImpact: false,
-      tags: ["needs-review"],
-      provider: "mock",
-    };
-  },
   suggestDuplicate(input: DuplicateInput): DuplicateSuggestion | null {
     const cutoff = Date.now() - duplicateRule.maxAgeHours * 60 * 60 * 1000;
     let best: DuplicateSuggestion | null = null;
@@ -432,6 +418,7 @@ export const campusStore = {
     return best;
   },
   createReport(input: CreateReportInput): CreateReportResponse {
+    if (input.analysis.issueDetected === false || !input.analysis.summary.trim()) throw new Error("Confirm and describe an issue before saving a report.");
     if (!isInsideReporting(input.latitude, input.longitude)) {
       throw new Error("That pin is outside the SJSU reporting boundary.");
     }
@@ -478,6 +465,8 @@ export const campusStore = {
       studentDescription: input.studentDescription,
       aiConfidence: input.analysis.confidence,
       analysisProvider: input.analysis.provider,
+      analysisModel: input.analysis.model,
+      analysisRationale: input.analysis.rationale,
       createdAt: now,
     };
     const event: StatusEvent = {
@@ -538,6 +527,20 @@ export const campusStore = {
     if (localPreview) return localPreview;
     const photo = persisted.photos.find((item) => item.id === photoId);
     return photo?.storagePath.startsWith("/demo/") ? photo.storagePath : null;
+  },
+  linkTestPhoto(photoId: string, imagePath: string) {
+    if (!imagePath.startsWith("/demo/")) return;
+    persisted = { ...persisted, photos: persisted.photos.map((photo) => photo.id === photoId ? { ...photo, storagePath: imagePath } : photo) };
+    save();
+    publish();
+  },
+  discardPhoto(photoId: string) {
+    const photo = persisted.photos.find((item) => item.id === photoId);
+    if (!photo || photo.issueId) return;
+    persisted = { ...persisted, photos: persisted.photos.filter((item) => item.id !== photoId) };
+    forgetPhoto(photoId);
+    save();
+    publish();
   },
   addLibrarySignal() {
     const created = ensureIssue({
@@ -855,7 +858,6 @@ function ensureIssue(input: {
   selectedIssueId = issue.id;
   return true;
 }
-
 function appendDemoScenario(scenario: DemoScenario) {
   if (persisted.issues.some((issue) => issue.id === scenario.id)) return false;
   const now = new Date().toISOString();
@@ -919,8 +921,4 @@ function appendDemoScenario(scenario: DemoScenario) {
     credits: [...persisted.credits, credit("scout-1", issue.id, "first-report", 10, "First report")],
   };
   return true;
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

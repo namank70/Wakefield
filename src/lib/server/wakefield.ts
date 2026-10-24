@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stepSeverity } from "@/lib/health/score";
+import { analyzeImage } from "@/lib/server/vision";
 import type {
   AnalysisResult,
   CreateReportInput,
@@ -120,20 +121,6 @@ function normalizeCategory(value: unknown) {
   return category === "blocked_pathway" ? "walkway_obstruction" : category;
 }
 
-function normalizeAnalysis(value: Partial<AnalysisResult>, provider: AnalysisResult["provider"]): AnalysisResult {
-  const confidence = Number(value.confidence ?? 0);
-  return {
-    category: normalizeCategory(value.category),
-    summary: String(value.summary || "Issue identified from submitted image"),
-    severity: value.severity === "low" || value.severity === "medium" || value.severity === "high" || value.severity === "urgent" ? value.severity : "medium",
-    department: String(value.department || "Campus services"),
-    confidence: Math.max(0, Math.min(1, confidence > 1 ? confidence / 100 : confidence)),
-    accessibilityImpact: Boolean(value.accessibilityImpact),
-    tags: Array.isArray(value.tags) ? value.tags.map(String).slice(0, 12) : [],
-    provider,
-  };
-}
-
 export async function uploadPhoto(blob: Blob, campusId: string): Promise<UploadResult> {
   if (!blob.type.startsWith("image/")) jsonError("Only image files are supported.", 415);
   if (blob.size > 10 * 1024 * 1024) jsonError("Image exceeds the 10 MB limit.", 413);
@@ -153,33 +140,11 @@ export async function analyzePhoto(photoId: string, context: { campusId: string;
   const existing = analysisCache.get(photoId);
   if (existing) return existing;
 
-  if (process.env.EAISER_API_URL) {
-    const image = stored.blob ?? new Blob([readFileSync(stored.filePath)], { type: stored.mimeType });
-    const body = new FormData();
-    body.append("image", image, photoId);
-    body.append("context", JSON.stringify(context));
-    const response = await fetch(process.env.EAISER_API_URL, {
-      method: "POST",
-      headers: process.env.EAISER_API_KEY ? { Authorization: `Bearer ${process.env.EAISER_API_KEY}` } : undefined,
-      body,
-    });
-    if (!response.ok) jsonError(`EAiSER analysis failed (${response.status}).`, 502);
-    const result = normalizeAnalysis((await response.json()) as Partial<AnalysisResult>, "eaiser");
-    analysisCache.set(photoId, result);
-    return result;
-  }
-
-  const cached = normalizeAnalysis({
-    category: "other",
-    summary: "Photo attached. Add a description and review the category; image analysis is not configured on this server.",
-    severity: "low",
-    department: "Manual review",
-    confidence: 0,
-    accessibilityImpact: false,
-    tags: ["needs-review"],
-  }, "mock");
-  analysisCache.set(photoId, cached);
-  return cached;
+  if (context.campusId !== stored.campusId) jsonError("Photo belongs to a different campus.", 400);
+  const image = stored.blob ?? new Blob([readFileSync(stored.filePath)], { type: stored.mimeType });
+  const result = await analyzeImage(image, context);
+  analysisCache.set(photoId, result);
+  return result;
 }
 
 function distanceMeters(aLat: number, aLon: number, bLat: number, bLon: number) {
@@ -203,6 +168,7 @@ export function suggestDuplicate(input: DuplicateInput): DuplicateSuggestion | n
 
 export function createReport(input: CreateReportInput): CreateReportResponse {
   if (!input.campusId || !input.regionId || !input.analysis || !input.reporterId) jsonError("campusId, regionId, analysis, and reporterId are required.");
+  if (input.analysis.issueDetected === false || !input.analysis.summary?.trim()) jsonError("Confirm and describe an issue before saving a report.");
   const timestamp = now();
   const category = normalizeCategory(input.analysis.category);
   const existing = input.attachToIssueId ? issues.get(input.attachToIssueId) : undefined;
@@ -214,7 +180,7 @@ export function createReport(input: CreateReportInput): CreateReportResponse {
     reportCount: 0, tags: input.analysis.tags, createdAt: timestamp, updatedAt: timestamp, resolvedAt: null,
   };
   const reportId = id("report");
-  const report: Report = { id: reportId, issueId: issue.id, reporterId: input.reporterId, photoId: input.photoId, latitude: input.latitude, longitude: input.longitude, locationSource: input.locationSource, locationAccuracyMeters: input.locationAccuracyMeters, studentDescription: input.studentDescription, aiConfidence: input.analysis.confidence, analysisProvider: input.analysis.provider, createdAt: timestamp };
+  const report: Report = { id: reportId, issueId: issue.id, reporterId: input.reporterId, photoId: input.photoId, latitude: input.latitude, longitude: input.longitude, locationSource: input.locationSource, locationAccuracyMeters: input.locationAccuracyMeters, studentDescription: input.studentDescription, aiConfidence: input.analysis.confidence, analysisProvider: input.analysis.provider, analysisModel: input.analysis.model, analysisRationale: input.analysis.rationale, createdAt: timestamp };
   Object.assign(issue, stepSeverity({ ...issue, reportCount: issue.reportCount + 1, updatedAt: timestamp }));
   issues.set(issue.id, issue);
   reports.set(report.id, report);

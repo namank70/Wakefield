@@ -1,11 +1,24 @@
 const previews = new Map<string, string>();
+const blobs = new Map<string, Blob>();
 
 export function rememberPreview(photoId: string, file: Blob) {
   const existing = previews.get(photoId);
   if (existing) URL.revokeObjectURL(existing);
   const url = URL.createObjectURL(file);
   previews.set(photoId, url);
+  blobs.set(photoId, file);
   return url;
+}
+
+export function photoBlob(photoId: string) {
+  return blobs.get(photoId) ?? null;
+}
+
+export function forgetPhoto(photoId: string) {
+  const url = previews.get(photoId);
+  if (url) URL.revokeObjectURL(url);
+  previews.delete(photoId);
+  blobs.delete(photoId);
 }
 
 export function previewUrl(photoId: string) {
@@ -15,6 +28,7 @@ export function previewUrl(photoId: string) {
 export function clearPreviews() {
   for (const url of previews.values()) URL.revokeObjectURL(url);
   previews.clear();
+  blobs.clear();
 }
 
 export function readBlobWithProgress(file: Blob, onProgress: (loaded: number, total: number, indeterminate: boolean) => void) {
@@ -33,9 +47,8 @@ export function readBlobWithProgress(file: Blob, onProgress: (loaded: number, to
   });
 }
 
-export async function compressImage(file: Blob) {
+export async function compressImage(file: Blob, maxEdge = 768) {
   const bitmap = await createImageBitmap(file);
-  const maxEdge = 1600;
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));

@@ -6,6 +6,8 @@ When the campus speaks, the campus wakes. Wakefield turns photo-led reports into
 
 Use `npm.cmd` and `npx.cmd`. Do not change the execution policy. For a one-click Windows start, run `scripts\run-wakefield.cmd`.
 
+For automatic photo classification, run `npm.cmd run setup:ai` once first. This installs Ollama from its official signed Windows installer when needed and downloads the local `qwen3-vl:2b-instruct` vision model. Later launches reuse the installed model. The app's photo AI status shows when it is ready. See [docs/LOCAL_AI.md](docs/LOCAL_AI.md).
+
 ```powershell
 npm.cmd install
 copy .env.example .env.local
@@ -48,9 +50,11 @@ Geometry is cached under `src/data/geo` from OpenStreetMap (ODbL). See `src/data
 
 ## Reporting
 
-Report a signal offers four prepared campus photos, device upload, and the camera. Prepared photos use saved classifications. Other uploads are attached to the report and start with a manual-review form; they are not described as image analysis unless a live EAiSER provider is configured. Choose a building or walkway from the location list, and the map flies to and highlights that feature. Move the pin to the exact spot if needed; location is not inferred from the image. Category, severity, summary, department, and accessibility impact can be reviewed before saving. Pins outside the campus reporting boundary are rejected.
+Report a signal offers twelve campus photos, device upload, and the camera. Eight additional images are AI-generated test scenes stored beside the original four in `public/demo/`; the gallery labels their origin and filters them by area. Photos selected from the gallery and device uploads both go through the configured image provider. The local Ollama model inspects image contents and suggests category, severity, summary, department, and accessibility impact, with a short visible-evidence explanation. Clear photos can return no issue; they do not automatically create a report. If the model is unavailable, the reporter can retry or explicitly review manually.
 
-The campus pulse can load all four photo-backed reports at once, add independent confirmations, or reset activity. Every open signal receives a priority score based on severity, repeat reports, accessibility impact, response status, and time waiting. Duplicate reports increment its count, raise its place in both queues, and step severity up when a third report arrives. An urgent issue activates immediately. Additional reporters increase the regional activation score without applying building damage twice. Marking an issue fixed keeps damage in place until a student verifies the repair; verification restores health and leaves a green recovered footprint on the map.
+Choose a building or walkway from the location list, and the map flies to and highlights that feature. Move the pin to the exact spot if needed; location is not inferred from the image. Review the AI suggestions before saving. Pins outside the campus reporting boundary are rejected.
+
+The campus pulse can analyze the Library's three generated photos, Engineering's three generated photos, or all eight in sequence. Only completed AI classifications that identify an issue create reports. Clear photos and previously added gallery photos are skipped. The original four-photo shortcut remains available and explicitly uses saved labels. Every open signal receives a priority score based on severity, repeat reports, accessibility impact, response status, and time waiting. Duplicate reports increment its count, raise its place in both queues, and step severity up when a third report arrives. An urgent issue activates immediately. Additional reporters increase the regional activation score without applying building damage twice. Marking an issue fixed keeps damage in place until a student verifies the repair; verification restores health and leaves a green recovered footprint on the map.
 
 ## Presentation flow and rewards
 

@@ -23,6 +23,7 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
   const nearby = nearestLandmark(issue.latitude, issue.longitude, 180);
   const place = nearby?.name ?? regionNameFor(issue.regionId);
   const opened = reports[0]?.createdAt ?? issue.createdAt;
+  const aiObservation = reports.slice().reverse().find((report) => report.analysisProvider === "ollama" && report.analysisRationale);
   const placeHealth = buildingHealth(campus.issues).find((place) => place.id === placeForIssue(issue).id) ?? { ...placeForIssue(issue), health: 100 };
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +74,7 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
         <span className="wake-chip">{severityLabels[issue.severity]} impact</span>
         <span className={`wake-status is-${issue.status}`}>{issue.status.replaceAll("_", " ")}</span>
       </p>
+      {aiObservation ? <div className="wake-ai-rationale mt-3"><p className="font-mono text-[10px] uppercase tracking-wider text-cyan">Photo AI observation · {aiObservation.analysisModel || "local vision"}</p><p className="mt-1">{aiObservation.analysisRationale}</p></div> : null}
       <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
         <div>
           <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Severity</dt>

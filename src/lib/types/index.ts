@@ -9,7 +9,7 @@ export type IssueStatus =
 
 export type LocationSource = "device" | "manual";
 
-export type AnalysisProvider = "eaiser" | "cached" | "mock";
+export type AnalysisProvider = "eaiser" | "ollama" | "cached" | "mock";
 
 export type RevealLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -24,6 +24,11 @@ export type AnalysisResult = {
   accessibilityImpact: boolean;
   tags: string[];
   provider: AnalysisProvider;
+  issueDetected?: boolean;
+  rationale?: string;
+  model?: string;
+  durationMs?: number;
+  cacheHit?: boolean;
 };
 
 export type RegionState = {
@@ -77,6 +82,8 @@ export type Report = {
   studentDescription: string;
   aiConfidence: number;
   analysisProvider: AnalysisProvider;
+  analysisModel?: string;
+  analysisRationale?: string;
   createdAt: string;
 };
 

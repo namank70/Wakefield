@@ -6,7 +6,8 @@ import { categories } from "@/lib/config/display";
 import { dataMode, guidedMode } from "@/lib/config/env";
 import { isInsideReporting, nearestLandmark, regionIdFor, reportLocations, seededLibraryPin } from "@/lib/geo/campus";
 import { campusStore } from "@/lib/state/store";
-import { demoScenarios, type DemoScenario } from "@/lib/demo/scenarios";
+import { testPhotos, type CampusTestPhoto } from "@/lib/demo/scenarios";
+import { useVisionStatus } from "@/lib/state/use-vision";
 import { useCampus } from "@/lib/state/use-campus";
 import type { AnalysisResult, DuplicateSuggestion, UploadProgress } from "@/lib/types";
 import { useEffect, useRef, useState } from "react";
@@ -26,7 +27,8 @@ export function ReportFlow() {
   const [error, setError] = useState<string | null>(null);
   const [photoId, setPhotoId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null);
+  const [demoScenario, setDemoScenario] = useState<CampusTestPhoto | null>(null);
+  const [processing, setProcessing] = useState("Preparing photo…");
   const [description, setDescription] = useState("");
   const [suggestion, setSuggestion] = useState<DuplicateSuggestion | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,11 +39,15 @@ export function ReportFlow() {
     };
   }, [preview]);
 
-  function keep(next: Blob, scenario: DemoScenario | null = null) {
+  function keep(next: Blob, scenario: CampusTestPhoto | null = null) {
+    if (dataMode === "mock" && photoId) campusStore.discardPhoto(photoId);
     if (preview) URL.revokeObjectURL(preview);
     setBlob(next);
     setPreview(URL.createObjectURL(next));
     setDemoScenario(scenario);
+    setPhotoId(null);
+    setAnalysis(null);
+    setProgress(null);
     if (scenario) {
       const location = reportLocations.find((item) => item.id === scenario.buildingId);
       campusStore.setFocusLocation(location ? { id: location.id, name: location.name, kind: location.kind } : null);
@@ -60,6 +66,7 @@ export function ReportFlow() {
   }
 
   function close() {
+    if (dataMode === "mock" && photoId && step !== "done") campusStore.discardPhoto(photoId);
     campusStore.closeReport();
   }
 
@@ -68,23 +75,28 @@ export function ReportFlow() {
     setStep("upload");
     setError(null);
     setBusy(true);
+    setProcessing("Preparing photo…");
     try {
-      const compressed = await compressImage(blob);
-      const uploaded = await getClient().uploadPhoto(compressed, setProgress);
-      setPhotoId(uploaded.photoId);
-      const result = demoScenario
-        ? demoScenario.analysis
-        : await getClient().analyzePhoto({
-          photoId: uploaded.photoId,
+      let currentPhotoId = photoId;
+      if (!currentPhotoId) {
+        const compressed = await compressImage(blob);
+        const uploaded = await getClient().uploadPhoto(compressed, setProgress);
+        currentPhotoId = uploaded.photoId;
+        setPhotoId(currentPhotoId);
+      }
+      setProcessing("Photo AI is reviewing the image… The first photo may take longer while the model loads.");
+      const result = await getClient().analyzePhoto({
+          photoId: currentPhotoId,
           latitude: campus.draftLocation.latitude,
           longitude: campus.draftLocation.longitude,
           campusId: "sjsu",
         });
       setAnalysis(result);
-      setDescription(demoScenario?.studentDescription ?? result.summary);
+      setDescription(result.summary);
       setStep("analysis");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Upload failed. The photo is still here.");
+      setProcessing("Photo AI could not finish this review.");
     } finally {
       setBusy(false);
     }
@@ -92,6 +104,10 @@ export function ReportFlow() {
 
   async function reviewDuplicate() {
     if (!analysis || !campus.draftLocation) return;
+    if (analysis.issueDetected === false || !analysis.summary.trim()) {
+      setError("Describe the issue you want to report before continuing.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -141,6 +157,7 @@ export function ReportFlow() {
         reporterId: "scout-1",
         attachToIssueId,
       });
+      if (dataMode === "mock" && demoScenario && photoId) campusStore.linkTestPhoto(photoId, demoScenario.image);
       window.dispatchEvent(new Event("wakefield:data-changed"));
       setStep("done");
     } catch (reason) {
@@ -159,6 +176,7 @@ export function ReportFlow() {
       {step === "camera" ? <CameraStage onCapture={keep} /> : null}
       {step === "preview" && preview ? (
         <div className="space-y-3">
+          {demoScenario?.synthetic ? <p className="wake-ai-photo-label">AI-generated test photo · choose where to place it on the map</p> : null}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview} alt="Captured campus signal" className="max-h-64 w-full rounded-md object-cover" />
           <div className="flex gap-2">
@@ -169,12 +187,10 @@ export function ReportFlow() {
       ) : null}
       {step === "location" ? <LocationStep scenario={demoScenario} /> : null}
       {step === "upload" ? (
-        <p className="font-mono text-sm">
-          {progress?.indeterminate || !progress ? "Uploading…" : `Uploading ${Math.round((progress.loaded / Math.max(progress.total, 1)) * 100)}%`}
-        </p>
+        <div className="wake-ai-processing" role="status">{busy ? <span className="wake-ai-spinner" aria-hidden="true" /> : null}<div><p>{processing}</p>{progress && !processing.startsWith("Photo AI") ? <small>Photo ready: {Math.round(100 * progress.loaded / Math.max(progress.total, 1))}%</small> : null}</div></div>
       ) : null}
       {step === "analysis" && analysis ? (
-        <AnalysisStep analysis={analysis} description={description} onDescription={setDescription} onChange={setAnalysis} />
+        <><AnalysisStep analysis={analysis} description={description} onDescription={setDescription} onChange={setAnalysis} />{analysis.issueDetected === false ? <button type="button" className="mt-3" onClick={() => setStep("camera")}>Choose another photo</button> : null}</>
       ) : null}
       {step === "duplicate" && suggestion ? (
         <div className="space-y-3 text-sm">
@@ -203,23 +219,31 @@ export function ReportFlow() {
           </button>
         ) : null}
         {step === "upload" && error ? (
-          <button type="button" onClick={() => void uploadAndAnalyze()}>Retry upload</button>
+          <>
+            <button type="button" disabled={busy} onClick={() => void uploadAndAnalyze()}>Retry photo AI</button>
+            <button type="button" disabled={busy || !photoId} onClick={() => {
+              setAnalysis({ category: "other", summary: "", severity: "low", department: "Manual review", confidence: 0, accessibilityImpact: false, tags: ["manual-review"], provider: "mock", issueDetected: true });
+              setDescription(""); setError(null); setStep("analysis");
+            }}>Review manually</button>
+          </>
         ) : null}
         {step === "analysis" ? (
-          <button type="button" disabled={busy} onClick={() => void reviewDuplicate()}>Check for a duplicate</button>
+          <button type="button" disabled={busy || analysis?.issueDetected === false || !analysis?.summary.trim()} onClick={() => void reviewDuplicate()}>Check for a duplicate</button>
         ) : null}
       </div>
     </div>
   );
 }
 
-function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: DemoScenario | null) => void }) {
+function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: CampusTestPhoto | null) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [cameraRequested, setCameraRequested] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [area, setArea] = useState("all");
+  const { status } = useVisionStatus();
 
-  async function loadSample(scenario: DemoScenario) {
+  async function loadSample(scenario: CampusTestPhoto) {
     try {
       const response = await fetch(scenario.image);
       if (!response.ok) throw new Error("The sample photo could not be loaded.");
@@ -265,8 +289,9 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: DemoSce
 
   return (
     <div className="space-y-3">
-      <video ref={videoRef} className="aspect-[4/3] w-full rounded-md bg-black object-cover" playsInline muted />
-      {!cameraRequested ? <p className="text-xs text-slate-400">Choose a prepared photo, upload an image, or open your camera. Your camera only starts if you ask to open it.</p> : null}
+      {cameraRequested ? <video ref={videoRef} className="aspect-[4/3] w-full rounded-md bg-black object-cover" playsInline muted /> : null}
+      <p className={`wake-ai-status ${status?.ready ? "is-ready" : ""}`} role="status">{status ? status.ready ? "Photo AI ready · automatic category, severity and team" : status.message : "Checking photo AI…"}</p>
+      {!cameraRequested ? <p className="text-xs text-slate-400">Choose a campus photo, upload an image, or open your camera.</p> : null}
       {message ? <p className="text-sm text-amber">{message}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button
@@ -307,15 +332,18 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: DemoSce
       {guidedMode ? (
         <div className="wake-sample-set">
           <div>
-            <p className="wake-sample-kicker">Four prepared campus examples</p>
-            <p className="wake-sample-note">Prepared photo examples use saved classifications. Other uploads need your description and manual review.</p>
+            <p className="wake-sample-kicker">Campus photo library · {testPhotos.length} photos</p>
+            <p className="wake-sample-note">The AI reads each image. Generated scenes are labeled for testing; choose or change their map location before reporting.</p>
+          </div>
+          <div className="wake-photo-filters" role="group" aria-label="Filter test photos by area">
+            {[["all", "All"], ["library", "Library"], ["engineering", "Engineering"], ["student-union", "Student Union"]].map(([id, label]) => <button key={id} type="button" aria-pressed={area === id} onClick={() => setArea(id)}>{label}</button>)}
           </div>
           <div className="wake-sample-grid">
-            {demoScenarios.map((scenario) => (
+            {testPhotos.filter((photo) => area === "all" || photo.regionId === area).map((scenario) => (
               <button key={scenario.id} type="button" className="wake-sample-card" onClick={() => void loadSample(scenario)}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={scenario.image} alt="" />
-                <span>{scenario.title}</span>
+                <span>{scenario.title}<small>{scenario.synthetic ? "AI-generated test photo" : "Original photo"}</small></span>
               </button>
             ))}
           </div>
@@ -325,7 +353,7 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: DemoSce
   );
 }
 
-function LocationStep({ scenario }: { scenario: DemoScenario | null }) {
+function LocationStep({ scenario }: { scenario: CampusTestPhoto | null }) {
   const campus = useCampus();
   const [message, setMessage] = useState(scenario
     ? `${scenario.locationLabel}. Confirm or change the location; the photo does not determine it.`
@@ -437,12 +465,14 @@ function AnalysisStep({
   return (
     <form className="space-y-3 text-sm" onSubmit={(event) => event.preventDefault()}>
       <p className="font-mono text-[11px] uppercase tracking-wider text-cyan">
-        {analysis.provider === "eaiser" ? "EAiSER photo analysis" : analysis.provider === "cached" ? "Prepared photo · saved classification" : "Manual review · no image analysis configured"}
+        {analysis.provider === "ollama" ? `Local photo AI · ${analysis.model || "Ollama"}` : analysis.provider === "eaiser" ? "EAiSER photo analysis" : analysis.provider === "cached" ? "Prepared photo · saved classification" : "Reporter review"}
       </p>
-      {analysis.provider !== "eaiser" ? <p className="text-xs text-slate-400">This is not a live AI result. Prepared photos use saved labels; other uploads need your description and edits before saving.</p> : null}
+      {analysis.rationale ? <p className="wake-ai-rationale">{analysis.rationale}</p> : null}
+      {analysis.provider === "ollama" ? <p className="text-xs text-slate-400">{analysis.cacheHit ? "Reused the model's previous analysis of this exact photo." : `Analyzed locally${analysis.durationMs ? ` in ${(analysis.durationMs / 1000).toFixed(1)} seconds` : ""}.`} Review the suggestions before saving.</p> : null}
+      {analysis.issueDetected === false ? <div className="wake-ai-no-issue"><strong>No clear issue detected</strong><p>A clear photo does not need a report. You can choose another photo or continue with your own description.</p><button type="button" onClick={() => onChange({ ...analysis, issueDetected: true, provider: "mock", summary: "", confidence: 0, rationale: "The reporter chose to review the photo manually.", model: undefined })}>I see an issue · review manually</button></div> : null}
       <label className="block">
         Category
-        <select value={analysis.category} onChange={(event) => onChange({ ...analysis, category: event.target.value })}>
+        <select value={analysis.category} onChange={(event) => onChange({ ...analysis, category: event.target.value, department: categories.find((item) => item.id === event.target.value)?.department || "Manual review" })}>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>{category.label}</option>
           ))}
@@ -462,19 +492,12 @@ function AnalysisStep({
         <textarea value={analysis.summary} onChange={(event) => onChange({ ...analysis, summary: event.target.value })} rows={3} />
       </label>
       <label className="block">
-        Department
+        Suggested department
         <input value={analysis.department} onChange={(event) => onChange({ ...analysis, department: event.target.value })} />
       </label>
       <label className="block">
-        Confidence
-        <input
-          type="number"
-          min={0}
-          max={1}
-          step={0.01}
-          value={analysis.confidence}
-          onChange={(event) => onChange({ ...analysis, confidence: Number(event.target.value) })}
-        />
+        Model confidence estimate
+        <output className="mt-1 block text-slate-300">{analysis.provider === "mock" ? "Not scored" : `${Math.round(analysis.confidence * 100)}% · review required`}</output>
       </label>
       <label className="flex items-center gap-2">
         <input

@@ -1,6 +1,6 @@
 import type { AnalysisResult } from "@/lib/types";
 
-export type DemoScenario = {
+export type CampusTestPhoto = {
   id: string;
   title: string;
   image: string;
@@ -10,8 +10,10 @@ export type DemoScenario = {
   latitude: number;
   longitude: number;
   studentDescription: string;
-  analysis: AnalysisResult;
+  synthetic?: boolean;
 };
+
+export type DemoScenario = CampusTestPhoto & { analysis: AnalysisResult };
 
 /** Prepared demo fixtures. These are cached examples, not live computer-vision results. */
 export const demoScenarios: DemoScenario[] = [
@@ -99,4 +101,17 @@ export const demoScenarios: DemoScenario[] = [
       provider: "cached",
     },
   },
+];
+
+/** Locations are suggested testing pins; generated scenes are not real campus incidents. */
+export const testPhotos: CampusTestPhoto[] = [
+  ...demoScenarios,
+  { id: "ai-library-ramp", title: "Bins across an access ramp", image: "/demo/library-ramp-blocked.png", locationLabel: "MLK Library · access ramp", regionId: "library", buildingId: "library", latitude: 37.33530, longitude: -121.88470, studentDescription: "", synthetic: true },
+  { id: "ai-library-leak", title: "Water in a library corridor", image: "/demo/library-water-leak.png", locationLabel: "MLK Library · corridor", regionId: "library", buildingId: "library", latitude: 37.33547, longitude: -121.88498, studentDescription: "", synthetic: true },
+  { id: "ai-library-bin", title: "Overflowing corridor bin", image: "/demo/library-overflowing-bin.png", locationLabel: "MLK Library · study area", regionId: "library", buildingId: "library", latitude: 37.33544, longitude: -121.88492, studentDescription: "", synthetic: true },
+  { id: "ai-engineering-leak", title: "Water beside electrical equipment", image: "/demo/engineering-electrical-leak.png", locationLabel: "Engineering · lab utility area", regionId: "engineering", buildingId: "engineering", latitude: 37.336807, longitude: -121.881376, studentDescription: "", synthetic: true },
+  { id: "ai-engineering-door", title: "Damaged corridor door", image: "/demo/engineering-broken-door.png", locationLabel: "Engineering · corridor", regionId: "engineering", buildingId: "engineering", latitude: 37.33670, longitude: -121.88139, studentDescription: "", synthetic: true },
+  { id: "ai-engineering-path", title: "Uneven concrete walkway", image: "/demo/campus-cracked-walkway.png", locationLabel: "Engineering · outside walkway", regionId: "engineering", buildingId: "engineering", latitude: 37.33667, longitude: -121.88143, studentDescription: "", synthetic: true },
+  { id: "ai-union-aisle", title: "Furniture across a main aisle", image: "/demo/union-blocked-aisle.png", locationLabel: "Student Union · common room", regionId: "student-union", buildingId: "student-union", latitude: 37.33662, longitude: -121.880385, studentDescription: "", synthetic: true },
+  { id: "ai-clear-rack", title: "Clear route beside bike racks", image: "/demo/campus-clear-bike-rack.png", locationLabel: "Student Union · courtyard", regionId: "student-union", buildingId: "student-union", latitude: 37.33656, longitude: -121.88046, studentDescription: "", synthetic: true },
 ];

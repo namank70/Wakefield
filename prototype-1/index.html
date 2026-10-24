@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campus Fix · our EAiSER prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <p class="eyebrow">Built on EAiSER College</p>
+    <h1>Campus Fix</h1>
+    <p class="lede" id="campus">Finding your campus…</p>
+  </header>
+
+  <main>
+    <section id="initial-inputs" class="card">
+      <h2>Report an issue</h2>
+      <label for="photo">Photo</label>
+      <input type="file" id="photo" accept="image/*" capture="environment" required>
+
+      <label for="building">Location (optional)</label>
+      <select id="building">
+        <option value="">Select a building</option>
+      </select>
+
+      <p id="error" class="error"></p>
+    </section>
+
+    <section id="analysis-step" class="card" hidden>
+      <div id="analysis-loading">
+        <h2>Analyzing photo…</h2>
+        <p class="muted">This takes a moment.</p>
+      </div>
+      <div id="analysis-results" hidden>
+        <h2>Analysis Results</h2>
+        <dl class="analysis-data">
+          <dt>Category</dt><dd id="analysis-category">Bike and scooter parking</dd>
+          <dt>Summary</dt><dd id="analysis-summary">Bikes and scooters are blocking the pedestrian route</dd>
+          <dt>Severity</dt><dd id="analysis-severity">High</dd>
+          <dt>Responsible department</dt><dd id="analysis-department">Transportation and Parking Services</dd>
+          <dt>Confidence</dt><dd id="analysis-confidence">92%</dd>
+          <dt>Accessibility impact</dt><dd id="analysis-accessibility">Yes</dd>
+          <dt>Region</dt><dd id="analysis-region">MLK Library</dd>
+        </dl>
+        <div>
+          <button type="button" id="confirm-analysis">Confirm and review</button>
+          <button type="button" id="retake-photo" class="secondary">Retake photo</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="review" class="card" aria-labelledby="review-title" hidden>
+      <h2 id="review-title"></h2>
+      <p class="muted" id="review-summary"></p>
+      <div class="where"><span class="tag" id="review-severity"></span><span class="tag" id="review-accessibility" hidden></span><span class="tag" id="review-region" hidden></span></div>
+      <fieldset style="border:0;padding:0;margin:0">
+        <legend class="muted">Send it to</legend>
+        <label class="toggle"><input type="checkbox" id="to-university"> <span id="to-university-label">The university</span></label>
+        <label class="toggle"><input type="checkbox" id="to-city"> <span id="to-city-label">The city</span></label>
+        <label class="toggle"><input type="checkbox" id="to-landlord"> Your landlord</label>
+      </fieldset>
+      <button type="button" id="send">Send report</button>
+    </section>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title">Your reports</h2>
+      <ul id="reports" class="reports"></ul>
+    </section>
+  </main>
+
+  <script src="/eaiser/sdk.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

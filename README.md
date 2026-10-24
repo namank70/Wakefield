@@ -1,6 +1,6 @@
 # Wakefield
 
-When the campus speaks, the campus wakes. This branch is the Phase 1 frontend: a bounded SJSU map, local progressive reveal, and a mock camera-to-report flow. No live model calls and no API keys.
+When the campus speaks, the campus wakes. This branch is the integrated Wakefield application: a bounded SJSU map, issue reporting, EAiSER analysis boundary, spatial signals, gamification, and a durable local backend.
 
 ## Setup (Windows)
 
@@ -48,7 +48,7 @@ Geometry is cached under `src/data/geo` from OpenStreetMap (ODbL). See `src/data
 
 Report a signal opens the camera (`facingMode: environment`), with a labeled photo upload when the camera is denied or missing. Location is requested only on the confirm step. Pins outside the reporting boundary are rejected. Demo mode can drop a labeled pin on the south side of MLK Library.
 
-Mock analysis is editable and marked `provider: "mock"`. A nearby unresolved report in the same category within 30 meters and 24 hours is offered as one existing signal, not a second pin. Report metadata is stored in `localStorage`. Photo previews stay in session memory and are not permanent.
+The live flow uploads the image to the same-origin backend, analyzes it, checks for nearby duplicates, creates a report, and updates the map state. With no external EAiSER provider configured, the backend uses a deterministic `provider: "cached"` result for the demo; this is clearly distinct from a live EAiSER response. Set `NEXT_PUBLIC_DATA_MODE=mock` only for the offline local-store demo.
 
 ## Demo controls
 
@@ -65,4 +65,4 @@ Set `NEXT_PUBLIC_DATA_MODE=live` to use the integrated API. Leave `NEXT_PUBLIC_A
 - `GET /api/map-state?campusId=sjsu`
 - `GET /api/issues/:issueId`
 
-Phase 2 status updates and verification are not on this client. The map currently reads the local store, so a live deployment still needs that store wired to `getMapState` before pins come from the server.
+Phase 2 status updates and verification call the integrated status and verification routes. The local backend persists state under the gitignored `data/` directory. For the real Studio SDK flow, see [`docs/STUDIO_HANDOFF.md`](docs/STUDIO_HANDOFF.md).

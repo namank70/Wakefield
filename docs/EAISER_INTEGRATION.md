@@ -61,15 +61,17 @@ EAiSER credentials stay server-side. The browser calls Wakefield's `/api/analyze
 
 ## Implementation status
 
-The server-side provider adapter now lives in `server/eaiser-adapter.mjs`.
-It validates uploads, sends multipart requests, normalizes provider responses,
-and exposes structured error data for the backend route. The Studio preview
-calls `/api/analyze` first and only uses its deterministic fallback when the
-Studio sandbox has no Wakefield API route.
+The Studio prototype now calls the confirmed SDK method
+`await EAiSER.image.analyze(file)` directly. It renders the returned analysis
+through the existing confirmation and report flow.
 
-The remaining final-integration inputs are provider configuration values, not
-application behavior: the real EAiSER URL, credential, and any confirmed
-native field names.
+The optional server-side provider adapter lives in `server/eaiser-adapter.mjs`
+for a future non-Studio deployment. It is not used by the College SDK sandbox,
+which requires no credentials or external endpoint.
+
+The remaining final-integration input is the backend framework route, if the
+team later deploys outside the Studio sandbox. For the current prototype,
+there are no provider credentials or external endpoint values to configure.
 
 ## Before production activation
 

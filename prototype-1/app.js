@@ -6,18 +6,10 @@ let draft = null;
 let currentAnalysis = null;
 
 async function analyzePhoto(file) {
-  const form = new FormData();
-  form.append("image", file, file.name || "campus-image");
-  const building = $("building").value || undefined;
-  form.append("campusId", campus?.id || "sjsu");
-  if (building) form.append("buildingId", building);
-
-  const response = await fetch("/api/analyze", { method: "POST", body: form });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error?.message || "EAiSER analysis failed.");
+  if (!window.EAiSER?.image?.analyze) {
+    throw new Error("EAiSER image analysis is unavailable in this environment.");
   }
-  return response.json();
+  return EAiSER.image.analyze(file);
 }
 
 async function start() {
@@ -63,7 +55,7 @@ async function renderList() {
 }
 
 start();
-$("photo")?.addEventListener("change", (e) => {
+$("photo")?.addEventListener("change", async (e) => {
   if (e.target.files.length > 0) {
     $("error").textContent = "";
     $("initial-inputs").hidden = true;
@@ -71,27 +63,14 @@ $("photo")?.addEventListener("change", (e) => {
     $("analysis-loading").hidden = false;
     $("analysis-results").hidden = true;
 
-    setTimeout(async () => {
-      try {
-        const liveResult = await analyzePhoto(e.target.files[0]);
-        showAnalysis(liveResult);
-      } catch (error) {
-        // Studio has no Wakefield API route; retain the deterministic demo only
-        // as a local preview fallback. Production uses the server result above.
-        const analysisResult = {
-          category: "bike_scooter_parking",
-          summary: "Bikes and scooters are blocking the pedestrian route",
-          severity: "high",
-          department: "Transportation and Parking Services",
-          confidence: 0.92,
-          accessibilityImpact: true,
-          tags: ["blocked-path", "bike", "scooter"],
-          provider: "mock",
-          region: "MLK Library",
-        };
-        showAnalysis(analysisResult);
-      }
-    }, 1500);
+    try {
+      const liveResult = await analyzePhoto(e.target.files[0]);
+      showAnalysis(liveResult);
+    } catch (error) {
+      $("error").textContent = error.message;
+      $("analysis-step").hidden = true;
+      $("initial-inputs").hidden = false;
+    }
   } else {
     $("analysis-step").hidden = true;
     $("initial-inputs").hidden = false;

@@ -1,13 +1,7 @@
-# Campus Fix prototype
+# Studio files (optional)
 
-This folder contains the clickable prototype exported from MomentumAI Studio.
+This folder contains a separate static prototype for EAiSER Studio. It is not the GitHub Next.js application, and the Studio runtime's image-analysis and live-report methods have not been confirmed for this project. Do not treat a local suggestion or saved report as live EAiSER analysis or campus dispatch.
 
-## Files
+The generated campus map is in `studio-handoff/campus-map.svg`. Regenerate it from the repository's campus geometry with `node prototype-1/build-campus-map.mjs` from the repository root.
 
-- `index.html` — report, analysis, review, and report-list screens
-- `app.js` — EAiSER College SDK flow, including live `EAiSER.image.analyze(file)` analysis
-- `styles.css` — responsive dark Wakefield visual styling
-
-## Important
-
-The Studio version uses `window.EAiSER` and runs inside the EAiSER College sandbox. Image analysis is performed by the SDK method `EAiSER.image.analyze(file)`; no credentials or external endpoint are required in Studio.
+For the primary Wakefield app, use the repository root README and `scripts/run-wakefield.cmd`.

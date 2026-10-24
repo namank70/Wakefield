@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b14">
+  <title>Wakefield · SJSU Main Campus</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#map" aria-label="Wakefield main campus map">
+        <span class="brand-mark" aria-hidden="true"><i></i></span>
+        <span><strong>Wakefield</strong><small>SJSU / MAIN CAMPUS</small></span>
+      </a>
+      <span class="demo-badge">SJSU CAMPUS</span>
+      <span class="open-count"><b id="open-count">1</b> open</span>
+      <div class="campus-health"><span>CAMPUS</span><i><b id="health-bar"></b></i><strong id="health-score">99</strong></div>
+      <button class="points" id="points-button" type="button" aria-label="Open rewards store"><span id="points">14</span> pts <small>Rewards</small></button>
+      <div class="desk-switch" role="group" aria-label="Choose view">
+        <button type="button" class="selected" data-desk="student">Student</button>
+        <button type="button" data-desk="university">University</button>
+      </div>
+      <button class="mobile-menu" id="mobile-signals" type="button" aria-label="Open signals">☰</button>
+    </header>
+
+    <nav class="rail" aria-label="Main navigation">
+      <button class="rail-button active" id="map-tab" type="button" aria-label="Map"><span class="rail-icon">◇</span><span>Map</span></button>
+      <button class="rail-button" id="signals-tab" type="button" aria-label="Signals"><span class="rail-icon">◉</span><span>Signals</span><i id="signal-count">3</i></button>
+      <button class="rail-button student-only" id="rewards-tab" type="button" aria-label="Rewards"><span class="rail-icon">✦</span><span>Rewards</span></button>
+      <button class="rail-button university-only" id="fixing-tab" type="button" aria-label="Fixing list" hidden><span class="rail-icon">⌁</span><span>Fixing</span></button>
+    </nav>
+
+    <main id="map" class="map-screen">
+      <div class="map-stage" id="map-stage" aria-label="Interactive Wakefield campus map">
+        <div class="map-plane" id="map-plane">
+          <img class="campus-art" src="campus-map.svg" alt="Map of the SJSU campus with streets, paths, and building footprints">
+          <div class="region-glow-layer" id="region-glow-layer" aria-hidden="true"></div>
+          <div class="building-health-layer" id="building-health-layer" aria-label="Building condition indicators"></div>
+          <div class="signals-layer" id="signals-layer" aria-label="Campus signals"></div>
+          <div class="you-marker" aria-label="Your approximate location"><span></span><b>You</b></div>
+        </div>
+      </div>
+
+      <div class="map-search">
+        <label class="sr-only" for="building-search">Search campus buildings</label>
+        <input id="building-search" type="search" placeholder="Search library, tower, engineering…" autocomplete="off">
+        <ul id="search-results" class="search-results" hidden></ul>
+      </div>
+      <div class="map-controls" aria-label="Map controls">
+        <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" id="rotate-map" aria-label="Rotate map">↻</button>
+        <button type="button" id="center-map" aria-label="Center map">⊙</button>
+        <button type="button" id="recenter">Recenter</button>
+      </div>
+
+      <aside class="legend" aria-label="Signal activity legend">
+        <strong>REVEAL</strong>
+        <span><i class="quiet"></i>Quiet</span>
+        <span><i class="stirring"></i>Stirring</span>
+        <span><i class="active-level"></i>Active</span>
+        <span><i class="urgent-level"></i>Urgent</span>
+        <small>Quiet does not mean verified clear.</small>
+      </aside>
+      <div class="reveal-strip" aria-hidden="true">REVEAL&nbsp; | &nbsp;Quiet&nbsp; | &nbsp;Stirring&nbsp; | &nbsp;Active&nbsp; | &nbsp;Urgent</div>
+      <button class="camera-button" id="open-report" type="button"><span aria-hidden="true">▣</span> Report a signal</button>
+      <button class="compass" id="compass" type="button" aria-label="Reset map direction"><span>N</span></button>
+      <p class="attribution">© OpenStreetMap contributors</p>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    </main>
+
+    <aside class="side-panel" id="side-panel" aria-label="Campus signals" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">CAMPUS SIGNALS</p><h2 id="side-title">Signals</h2></div><button type="button" class="icon-close" id="close-side" aria-label="Close panel">×</button></div>
+      <p class="panel-note" id="panel-note"></p>
+      <div id="report-list" class="report-list"></div>
+    </aside>
+
+    <div class="modal-backdrop" id="report-modal" hidden>
+      <section class="report-sheet" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="sheet-grab"></div>
+        <div class="sheet-heading"><div><p class="eyebrow">SJSU · MAIN CAMPUS</p><h2 id="modal-title">Report a signal</h2></div><button type="button" class="icon-close" id="close-report" aria-label="Close report">×</button></div>
+        <div class="stepper"><span class="step current" data-step-dot="0">1 <b>Photo</b></span><i></i><span class="step" data-step-dot="1">2 <b>Review</b></span><i></i><span class="step" data-step-dot="2">3 <b>Send</b></span></div>
+
+        <div class="form-step" id="photo-step">
+          <label class="field-label" for="photo">Add a photo of the issue</label>
+          <label class="photo-picker" for="photo"><span class="upload-icon">＋</span><strong id="photo-prompt">Choose a photo</strong><small>Use a clear picture of the campus issue</small><input id="photo" type="file" accept="image/*" capture="environment"></label>
+          <div class="photo-preview" id="photo-preview" hidden><img id="preview-image" alt="Selected issue photo"><button type="button" id="change-photo">Change photo</button></div>
+          <label class="field-label" for="building">Where is it? <span>optional</span></label>
+          <select id="building">
+            <option value="">Choose a nearby building</option>
+            <option>MLK Library</option><option>Tower Hall</option><option>Engineering</option><option>Student Union</option><option>Science Building</option><option>South Parking Garage</option><option>Campus Village</option><option>Main Campus walkway</option>
+          </select>
+          <label class="field-label" for="report-note">What did you notice? <span>optional</span></label>
+          <textarea id="report-note" rows="2" maxlength="280" placeholder="Describe what you noticed. This will be included in your saved report."></textarea>
+          <p class="inline-error" id="error" role="alert" hidden></p>
+          <button type="button" class="primary-button" id="analyze-button" disabled>Review suggestion <span>→</span></button>
+          <p class="privacy-note">Review the details before saving. This version stores reports in this browser.</p>
+        </div>
+
+        <div class="form-step" id="analysis-step" hidden>
+          <div class="analysis-loading" id="analysis-loading"><span class="spinner"></span><div><strong>Preparing manual review…</strong><p>A local starting point uses the file name and selected location, not the image contents. Check every detail before saving.</p></div></div>
+          <div id="analysis-result" hidden>
+            <div class="result-banner"><span class="result-check">✓</span><div><strong id="analysis-title">Review this suggestion</strong><p id="provider-label">Local suggestion · not image analysis</p></div></div>
+            <div class="result-photo"><img id="result-image" alt="Photo attached to this signal"></div>
+            <dl class="result-details">
+              <div><dt>Issue</dt><dd id="analysis-category"></dd></div>
+              <div><dt>What we found</dt><dd id="analysis-summary"></dd></div>
+              <div><dt>Urgency</dt><dd><span class="severity-pill" id="analysis-severity"></span></dd></div>
+              <div><dt>Campus team</dt><dd id="analysis-department"></dd></div>
+              <div><dt>Location</dt><dd id="analysis-region"></dd></div>
+            </dl>
+            <p class="accessibility-note" id="accessibility-note" hidden>♿ This may affect an accessible route. The report will be highlighted for review.</p>
+            <p class="inline-error" id="analysis-error" role="alert" hidden></p>
+            <button type="button" class="primary-button" id="confirm-analysis">Continue to send <span>→</span></button>
+            <button type="button" class="text-button" id="back-to-photo">Retake or change photo</button>
+          </div>
+        </div>
+
+        <div class="form-step" id="review-step" hidden>
+          <div class="review-card"><span class="review-icon">↗</span><div><strong id="review-title"></strong><p id="review-description"></p></div></div>
+          <p class="field-label destination-title">Suggested routing</p>
+          <label class="destination"><input type="checkbox" id="to-university" checked><span class="checkmark"></span><span><strong id="to-university-label">Transportation and Parking Services</strong><small>Recommended campus team</small></span><b class="recommended">RECOMMENDED</b></label>
+          <label class="destination"><input type="checkbox" id="to-city"><span class="checkmark"></span><span><strong>City · 311</strong><small>San José public property</small></span></label>
+          <label class="destination"><input type="checkbox" id="to-landlord"><span class="checkmark"></span><span><strong>Your landlord</strong><small>Only for off-campus housing</small></span></label>
+          <p class="inline-error" id="send-error" role="alert" hidden></p>
+          <button type="button" class="primary-button" id="send-report">Save report <span>→</span></button>
+          <button type="button" class="text-button" id="back-to-analysis">Back to analysis</button>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

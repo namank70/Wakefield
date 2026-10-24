@@ -101,6 +101,7 @@ export const colors = {
   path: "#3D4F66",
   cyan: "#26D9FF",
   violet: "#8B5CF6",
+  healthy: "#3DFF9A",
   amber: "#FFB547",
   urgent: "#FF4057",
 };

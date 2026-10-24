@@ -7,7 +7,7 @@ import { SignalList } from "@/components/issues/SignalList";
 import { RedeemPanel } from "@/components/rewards/RedeemPanel";
 import { ReportFlow } from "@/components/report/ReportFlow";
 import { landmarks } from "@/data/geo/landmarks";
-import { demoMode } from "@/lib/config/env";
+import { guidedMode } from "@/lib/config/env";
 import { campusHealth, creditBalance, healthTone } from "@/lib/health/score";
 import { getBearing, subscribeBearing } from "@/lib/map/bearing";
 import { campusStore } from "@/lib/state/store";
@@ -16,9 +16,17 @@ import { Camera, Crosshair, Map as MapIcon, Minus, Plus, Radio, RotateCw, Wrench
 import dynamic from "next/dynamic";
 import { useMemo, useState, useSyncExternalStore } from "react";
 
+function CampusMapLoading() {
+  return (
+    <div className="wake-map-host">
+      <div className="wake-map-fallback" role="img" aria-label="SJSU campus map preview" />
+    </div>
+  );
+}
+
 const CampusMap = dynamic(() => import("@/components/map/CampusMap"), {
   ssr: false,
-  loading: () => <div className="h-full w-full bg-[#070B14]" />,
+  loading: CampusMapLoading,
 });
 
 function Compass() {
@@ -52,7 +60,7 @@ export function AppShell() {
           <p className="font-display text-lg leading-none">Wakefield</p>
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">SJSU / Main Campus</p>
         </div>
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan">{demoMode ? "Demo data" : "Campus listening"}</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan">{guidedMode ? "LOCAL CAMPUS FEED" : "Campus listening"}</p>
         <p className="font-mono text-[11px] text-slate-300">{openCount} open</p>
         <div className="wake-campus-health" role="meter" aria-label="Campus health" aria-valuenow={health} aria-valuemin={0} aria-valuemax={100}>
           <span>Campus</span>
@@ -149,6 +157,7 @@ export function AppShell() {
         <p><i className="swatch stirring" /> Stirring</p>
         <p><i className="swatch active" /> Active</p>
         <p><i className="swatch urgent" /> Urgent</p>
+        <p><i className="swatch recovered" /> Recovered</p>
         <p className="wake-legend-note">Quiet does not mean verified clear.</p>
       </div>
       {campus.desk === "student" ? (
@@ -162,7 +171,7 @@ export function AppShell() {
       {campus.panel === "redeem" ? <RedeemPanel /> : null}
       {selected ? <IssueDrawer issue={selected} /> : null}
       {campus.reportOpen ? <ReportFlow /> : null}
-      {demoMode ? <DemoControls /> : null}
+      {guidedMode ? <DemoControls /> : null}
       {campus.pendingSignalId ? (
         <div className="wake-banner">
           <span>New signal saved.</span>

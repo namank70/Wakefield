@@ -1,150 +1,138 @@
-// Campus Fix: a small EAiSER Campus flow on the EAiSER College SDK (window.EAiSER).
-// The Studio preview runs in a sandbox without storage; the live adapter belongs in the API layer.
+// This legacy static handoff is intentionally local-only; the main application is in the repository root.
 const $ = (id) => document.getElementById(id);
-let campus = null;
-let draft = null;
+const reportStorageKey = "wakefield-studio-reports";
 let currentAnalysis = null;
 
-async function analyzePhoto(file) {
-  if (!window.EAiSER?.image?.analyze) {
-    throw new Error("EAiSER image analysis is unavailable in this environment.");
-  }
-  return EAiSER.image.analyze(file);
+const categoryRules = [
+  { pattern: /bike|bicycle|scooter|rack/i, category: "bike_scooter_parking", severity: "medium", department: "Transportation and Parking Services", access: false, summary: "Possible bicycle or scooter parking issue. Review the photo and confirm the route is clear." },
+  { pattern: /ramp|wheelchair|accessibility|curb/i, category: "accessibility_barrier", severity: "high", department: "Accessibility and Facilities", access: true, summary: "Possible accessibility barrier. Please review the photo and confirm the route impact." },
+  { pattern: /flood|fire|injur|urgent/i, category: "water_leak", severity: "urgent", department: "Facilities Plumbing", access: false, summary: "Possible urgent campus issue. Review the photo and contact emergency services if someone is in immediate danger." },
+  { pattern: /water|leak|pipe/i, category: "water_leak", severity: "high", department: "Facilities Plumbing", access: false, summary: "Possible water issue. Review the photo and confirm the details." },
+  { pattern: /light|lamp|dark/i, category: "lighting", severity: "medium", department: "Facilities Electrical", access: false, summary: "Possible lighting issue. Review the photo and confirm the details." },
+];
+
+function getReports() {
+  try { return JSON.parse(localStorage.getItem(reportStorageKey) || "[]"); }
+  catch { return []; }
 }
-
-async function start() {
-  const here = await EAiSER.campus.detect();
-  campus = here.campus;
-  $("campus").textContent = campus ? "You're at " + campus.name + "." : "You're off campus: reports go to the city.";
-  if (campus) {
-    const { buildings } = await EAiSER.campus.buildings(campus.id);
-    if ($("building")) {
-      for (const b of buildings) $("building").add(new Option(b.name, b.id));
-      if (here.building) $("building").value = here.building.id;
-    }
-  }
-  await renderList();
-}
-
-$("send").addEventListener("click", async () => {
-  const button = $("send");
-  button.disabled = true;
-  try {
-    await EAiSER.reports.send(draft.id, { university: $("to-university").checked, city: $("to-city").checked, landlord: $("to-landlord").checked });
-    $("review").hidden = true;
-    await renderList();
-    currentAnalysis = null;
-  } catch (err) {
-    $("error").textContent = err.message;
-  }
-});
-
-async function renderList() {
-  const reports = (await EAiSER.reports.list()).filter((r) => r.sentAt);
-  $("reports").innerHTML = "";
-  for (const r of reports) {
-    const li = document.createElement("li");
-    const title = document.createElement("strong"), status = document.createElement("span");
-    title.textContent = r.title;
+function renderList() {
+  const reports = getReports();
+  const list = $("reports");
+  list.replaceChildren();
+  reports.forEach((report) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    const status = document.createElement("span");
+    title.textContent = report.title;
     status.className = "status";
-    status.textContent = r.timeline[r.timeline.length - 1].label;
-    li.append(title, status);
-    $("reports").appendChild(li);
+    status.textContent = `Saved locally · ${report.location}`;
+    item.append(title, status);
+    list.append(item);
+  });
+  if (!reports.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "No saved reports yet.";
+    list.append(empty);
   }
-  if (!reports.length) $("reports").innerHTML = '<li class="muted">No reports yet.</li>';
+  $("campus").textContent = `SJSU CAMPUS · ${reports.length} SAVED REPORT${reports.length === 1 ? "" : "S"} · LOCAL WORKSPACE`;
 }
-
-start();
-$("photo")?.addEventListener("change", async (e) => {
-  if (e.target.files.length > 0) {
-    $("error").textContent = "";
-    $("initial-inputs").hidden = true;
-    $("analysis-step").hidden = false;
-    $("analysis-loading").hidden = false;
-    $("analysis-results").hidden = true;
-
-    try {
-      const liveResult = await analyzePhoto(e.target.files[0]);
-      showAnalysis(liveResult);
-    } catch (error) {
-      $("error").textContent = error.message;
-      $("analysis-step").hidden = true;
-      $("initial-inputs").hidden = false;
-    }
-  } else {
-    $("analysis-step").hidden = true;
-    $("initial-inputs").hidden = false;
-  }
-});
-
-function showAnalysis(analysisResult) {
-  const displayCategory = analysisResult.category.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const displaySeverity = String(analysisResult.severity).replace(/^./, (c) => c.toUpperCase());
+function suggestFromFile(file, location) {
+  const match = categoryRules.find((rule) => rule.pattern.test(file.name));
+  const selected = match || {
+    category: "walkway_obstruction", severity: "medium", department: "Facilities", access: false,
+    summary: "Possible campus maintenance issue. Review the photo, edit the details, and confirm before saving.",
+  };
+  return { ...selected, region: location || "MLK Library", provider: "local" };
+}
+function titleCase(value) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function showAnalysis(result) {
   $("analysis-loading").hidden = true;
   $("analysis-results").hidden = false;
-  $("analysis-category").textContent = displayCategory;
-  $("analysis-summary").textContent = analysisResult.summary;
-  $("analysis-severity").textContent = displaySeverity;
-  $("analysis-department").textContent = analysisResult.department;
-  $("analysis-confidence").textContent = `${Math.round(Number(analysisResult.confidence) * 100)}%`;
-  $("analysis-accessibility").textContent = analysisResult.accessibilityImpact ? "Yes" : "No";
-  $("analysis-region").textContent = analysisResult.region || "MLK Library";
-  currentAnalysis = { ...analysisResult, region: analysisResult.region || "MLK Library" };
+  $("analysis-provider").textContent = "Editable local suggestion from the file name · not photo analysis";
+  $("analysis-category").textContent = titleCase(result.category);
+  $("analysis-summary").textContent = result.summary;
+  $("analysis-severity").textContent = titleCase(result.severity);
+  $("analysis-department").textContent = result.department;
+  $("analysis-confidence").textContent = "Not scored";
+  $("analysis-accessibility").textContent = result.access ? "Review recommended" : "Not identified by this local suggestion";
+  $("analysis-region").textContent = result.region;
+  currentAnalysis = result;
 }
 
-$("retake-photo")?.addEventListener("click", () => {
+$("building").addEventListener("change", () => {
+  const selected = $("building").selectedOptions[0]?.textContent;
+  if (selected) $("campus").textContent = `SJSU CAMPUS · LOCATION SELECTED: ${selected.toUpperCase()}`;
+});
+$("photo").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    $("error").textContent = "Choose an image file to continue.";
+    return;
+  }
+  $("error").textContent = "";
+  $("analysis-step").hidden = false;
+  $("analysis-loading").hidden = false;
+  $("analysis-results").hidden = true;
+  const location = $("building").selectedOptions[0]?.textContent || "MLK Library";
+  window.setTimeout(() => showAnalysis(suggestFromFile(file, location)), 200);
+});
+$("retake-photo").addEventListener("click", () => {
   $("photo").value = "";
   currentAnalysis = null;
   $("analysis-step").hidden = true;
-  $("initial-inputs").hidden = false;
 });
-
-$("confirm-analysis")?.addEventListener("click", async () => {
-  const button = $("confirm-analysis");
-  button.disabled = true;
-  $("error").textContent = "";
+$("confirm-analysis").addEventListener("click", () => {
+  if (!currentAnalysis) return;
+  $("review-title").textContent = titleCase(currentAnalysis.category);
+  $("review-summary").textContent = currentAnalysis.summary;
+  $("review-severity").textContent = `Suggested priority: ${titleCase(currentAnalysis.severity)}`;
+  $("to-university").checked = true;
+  $("to-university-label").textContent = currentAnalysis.department;
+  $("to-city").checked = false;
+  $("to-landlord").checked = false;
+  $("review-accessibility").textContent = `Accessibility review: ${currentAnalysis.access ? "recommended" : "not identified"}`;
+  $("review-accessibility").hidden = false;
+  $("review-region").textContent = `Location: ${currentAnalysis.region}`;
+  $("review-region").hidden = false;
+  $("analysis-step").hidden = true;
+  $("review").hidden = false;
+});
+$("send").addEventListener("click", () => {
+  if (!currentAnalysis) return;
+  const selectedRecipients = [
+    $("to-university").checked ? $("to-university-label").textContent : null,
+    $("to-city").checked ? $("to-city-label").textContent : null,
+    $("to-landlord").checked ? "Your landlord" : null,
+  ].filter(Boolean);
+  if (!selectedRecipients.length) {
+    $("error").textContent = "Choose a suggested recipient before saving.";
+    return;
+  }
+  const report = {
+    id: `signal-${Date.now()}`,
+    title: titleCase(currentAnalysis.category),
+    summary: currentAnalysis.summary,
+    severity: currentAnalysis.severity,
+    department: currentAnalysis.department,
+    location: currentAnalysis.region,
+    recipients: selectedRecipients,
+    createdAt: new Date().toISOString(),
+  };
   try {
-    draft = await EAiSER.reports.create({
-      description: $("analysis-summary").textContent,
-      photo: $("photo").files[0] ? await EAiSER.photo($("photo").files[0]) : undefined,
-      location: { campus: campus && campus.id, building: $("building").value || undefined },
-    });
-
-    if (currentAnalysis) {
-      $("review-title").textContent = currentAnalysis.category.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      $("review-summary").textContent = currentAnalysis.summary;
-      $("review-severity").textContent = "Severity: " + String(currentAnalysis.severity).replace(/^./, (c) => c.toUpperCase());
-      $("to-university").checked = draft.suggested.university;
-      $("to-university").disabled = !draft.campus;
-      $("to-university-label").textContent = currentAnalysis.department;
-      $("to-city").checked = draft.suggested.city;
-      $("to-city-label").textContent = draft.destinations.city;
-      $("to-landlord").checked = draft.suggested.landlord;
-      $("review-accessibility").textContent = "Accessibility impact: " + currentAnalysis.accessibilityImpact;
-      $("review-accessibility").hidden = false;
-      $("review-region").textContent = "Region: " + currentAnalysis.region;
-      $("review-region").hidden = false;
-    } else {
-      $("review-title").textContent = draft.title;
-      $("review-summary").textContent = draft.summary;
-      $("review-severity").textContent = "Severity: " + draft.severity;
-      $("to-university").checked = draft.suggested.university;
-      $("to-university").disabled = !draft.campus;
-      $("to-university-label").textContent = draft.destinations.university || "The university";
-      $("to-city").checked = draft.suggested.city;
-      $("to-city-label").textContent = draft.destinations.city;
-      $("to-landlord").checked = draft.suggested.landlord;
-      $("review-accessibility").hidden = true;
-      $("review-region").hidden = true;
-    }
-    $("analysis-step").hidden = true;
-    $("review").hidden = false;
-    $("review-title").focus?.();
-  } catch (err) {
-    $("error").textContent = err.message;
-  } finally {
-    button.disabled = false;
+    localStorage.setItem(reportStorageKey, JSON.stringify([report, ...getReports()]));
+    $("error").textContent = "";
+    $("review").hidden = true;
+    $("photo").value = "";
+    $("initial-inputs").scrollIntoView({ behavior: "smooth", block: "center" });
+    currentAnalysis = null;
+    renderList();
+  } catch {
+    $("error").textContent = "Could not save this report in browser storage. Check available storage and try again.";
   }
 });
 
-setInterval(renderList, 15000);
+renderList();

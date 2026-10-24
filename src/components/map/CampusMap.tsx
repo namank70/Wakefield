@@ -62,8 +62,9 @@ export default function CampusMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(15);
-  const signature = `${campus.issues.map((issue) => `${issue.id}:${issue.updatedAt}:${issue.reportCount}:${issue.severity}:${issue.status}:${issue.regionId}`).join("|")}:${campus.previewLevel}:${campus.reports.length}`;
+  const signature = `${campus.issues.map((issue) => `${issue.id}:${issue.updatedAt}:${issue.reportCount}:${issue.severity}:${issue.status}:${issue.regionId}`).join("|")}:${campus.previewLevel}:${campus.reports.length}:${campus.focusLocation?.id ?? ""}`;
 
   useEffect(() => {
     const node = containerRef.current;
@@ -76,36 +77,62 @@ export default function CampusMap() {
     const east = area[1][0];
     const north = area[1][1];
     const pose = pitched();
-    const map = new maplibregl.Map({
-      container: node,
-      style: {
-        version: 8,
-        sources: {},
-        layers: [{ id: "background", type: "background", paint: { "background-color": "#070B14" } }],
-      },
-      center: [(west + east) / 2, (south + north) / 2],
-      zoom: 15.2,
-      bearing: pose.bearing,
-      pitch: pose.pitch,
-      maxPitch: pose.pitch === 0 ? 0 : 60,
-      attributionControl: false,
-      maxZoom: mapZoom.max,
-      renderWorldCopies: false,
-      dragRotate: false,
-      touchPitch: false,
-      fadeDuration: prefersReducedMotion() ? 0 : 300,
-    });
-    map.touchZoomRotate.disableRotation();
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: node,
+        style: {
+          version: 8,
+          sources: {},
+          layers: [{ id: "background", type: "background", paint: { "background-color": "#070B14" } }],
+        },
+        center: [(west + east) / 2, (south + north) / 2],
+        zoom: 15.2,
+        bearing: pose.bearing,
+        pitch: pose.pitch,
+        maxPitch: pose.pitch === 0 ? 0 : 60,
+        attributionControl: false,
+        maxZoom: mapZoom.max,
+        renderWorldCopies: false,
+        dragRotate: false,
+        touchPitch: false,
+        fadeDuration: prefersReducedMotion() ? 0 : 300,
+      });
+      map.touchZoomRotate.disableRotation();
+    } catch (reason) {
+      console.error("Wakefield interactive map could not start", reason);
+      window.setTimeout(() => setMapError("Interactive map unavailable here. Showing the campus map preview."), 0);
+      return;
+    }
     mapRef.current = map;
     let stopLimits = () => {};
     let alive = true;
+    let loaded = false;
+    const bootTimeout = window.setTimeout(() => {
+      if (!loaded) setMapError("Interactive map is taking too long to load. Showing the campus map preview.");
+    }, 7000);
     map.on("load", () => {
       if (!alive) return;
-      ensureLayers(map);
-      stopLimits = installNavigationLimits(map, movement, reporting);
-      publishBearing(map.getBearing());
-      setZoom(map.getZoom());
-      setReady(true);
+      try {
+        ensureLayers(map);
+        stopLimits = installNavigationLimits(map, movement, reporting);
+        publishBearing(map.getBearing());
+        setZoom(map.getZoom());
+        loaded = true;
+        window.clearTimeout(bootTimeout);
+        setMapError(null);
+        setReady(true);
+      } catch (reason) {
+        console.error("Wakefield campus map layers could not be prepared", reason);
+        window.clearTimeout(bootTimeout);
+        setMapError("The interactive map could not finish loading. Showing the campus map preview.");
+      }
+    });
+    map.on("error", (event) => {
+      if (!loaded) {
+        console.error("Wakefield interactive map reported an error", event.error);
+        setMapError("Interactive map unavailable here. Showing the campus map preview.");
+      }
     });
     map.on("rotate", () => publishBearing(map.getBearing()));
     map.on("zoomend", () => setZoom(map.getZoom()));
@@ -113,6 +140,7 @@ export default function CampusMap() {
       if (!campusStore.getSnapshot().placingPin) return;
       const target = event.originalEvent.target;
       if (target instanceof Element && target.closest("button")) return;
+      campusStore.setFocusLocation(null);
       campusStore.setDraftLocation({
         latitude: event.lngLat.lat,
         longitude: event.lngLat.lng,
@@ -122,6 +150,7 @@ export default function CampusMap() {
     });
     return () => {
       alive = false;
+      window.clearTimeout(bootTimeout);
       stopLimits();
       map.remove();
       mapRef.current = null;
@@ -132,8 +161,8 @@ export default function CampusMap() {
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
-    syncScene(map, { issues: campus.issues, reports: campus.reports, previewLevel: campus.previewLevel }, prefersReducedMotion());
-  }, [ready, signature, campus.issues, campus.reports, campus.previewLevel]);
+    syncScene(map, { issues: campus.issues, reports: campus.reports, previewLevel: campus.previewLevel, focusLocation: campus.focusLocation }, prefersReducedMotion());
+  }, [ready, signature, campus.issues, campus.reports, campus.previewLevel, campus.focusLocation]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -276,6 +305,7 @@ export default function CampusMap() {
         .addTo(map);
       marker.on("dragend", () => {
         const next = marker.getLngLat();
+        campusStore.setFocusLocation(null);
         campusStore.setDraftLocation({
           latitude: next.lat,
           longitude: next.lng,
@@ -291,5 +321,11 @@ export default function CampusMap() {
     };
   }, [ready, zoom, campus.issues, campus.selectedIssueId, campus.photos, campus.draftLocation]);
 
-  return <div ref={containerRef} className="wake-map" />;
+  return (
+    <div className="wake-map-host">
+      {!ready ? <div className="wake-map-fallback" role="img" aria-label="SJSU campus map preview" /> : null}
+      <div ref={containerRef} className={`wake-map${ready ? " is-ready" : ""}`} />
+      {mapError ? <p className="wake-map-status" role="status">{mapError}</p> : null}
+    </div>
+  );
 }

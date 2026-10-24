@@ -51,13 +51,12 @@ export const campusPlaces: CampusPlace[] = [
 ];
 
 export function hurtsHealth(issue: Issue) {
-  return issue.status === "open" || issue.status === "in_progress" || issue.status === "reopened";
+  return issue.status !== "resolved";
 }
 
 export function issueDamage(issue: Issue) {
   if (!hurtsHealth(issue)) return 0;
-  const extra = Math.min(10, Math.max(0, issue.reportCount - 1) * 2);
-  return damageBySeverity[issue.severity] + extra;
+  return damageBySeverity[issue.severity];
 }
 
 export function placeForIssue(issue: Issue) {
@@ -113,25 +112,34 @@ export function healthTone(health: number) {
 }
 
 export function fixingOrder(issues: Issue[]) {
-  const rank = (issue: Issue) => (issue.status === "awaiting_verification" ? 0 : 1);
   return issues
     .filter((issue) => issue.status !== "resolved")
     .slice()
     .sort((a, b) => {
-      const group = rank(b) - rank(a);
-      if (group !== 0) return group;
-      const severity = severityRank[b.severity] - severityRank[a.severity];
-      if (severity !== 0) return severity;
-      if (b.reportCount !== a.reportCount) return b.reportCount - a.reportCount;
+      const priority = issuePriorityScore(b) - issuePriorityScore(a);
+      if (priority !== 0) return priority;
       return a.createdAt.localeCompare(b.createdAt);
     });
 }
 
+export function issuePriorityScore(issue: Issue, now = Date.now()) {
+  const repeatedReports = Math.max(0, issue.reportCount - 1);
+  const created = Date.parse(issue.createdAt);
+  const hoursWaiting = Number.isFinite(created) ? Math.max(0, (now - created) / 3_600_000) : 0;
+  const statusBonus = issue.status === "awaiting_verification" ? 12 : issue.status === "in_progress" ? 6 : 0;
+  return severityRank[issue.severity] * 18
+    + Math.min(repeatedReports, 12) * 10
+    + (issue.accessibilityImpact ? 15 : 0)
+    + statusBonus
+    + Math.min(Math.floor(hoursWaiting / 12), 12);
+}
+
 export const rewards = [
-  { id: "coffee", label: "Student Union coffee", cost: 40 },
-  { id: "snack", label: "Campus market snack", cost: 30 },
-  { id: "print", label: "Library print credit", cost: 25 },
-  { id: "parking", label: "Parking day pass", cost: 80 },
+  { id: "coffee", label: "Campus café · coffee voucher", cost: 18 },
+  { id: "snack", label: "Spartan Market · snack voucher", cost: 12 },
+  { id: "print", label: "Library · print credit", cost: 15 },
+  { id: "parking", label: "Campus parking · day-pass voucher", cost: 30 },
+  { id: "spartan-goodie", label: "Spartan sticker pack", cost: 25 },
 ] as const;
 
 export type RewardId = (typeof rewards)[number]["id"];

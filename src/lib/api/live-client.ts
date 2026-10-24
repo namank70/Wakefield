@@ -13,6 +13,7 @@ import type {
   VerificationInput,
   WakefieldClient,
 } from "@/lib/types";
+import { rememberPreview } from "@/lib/api/images";
 
 /**
  * Live adapter. Components never call these endpoints directly.
@@ -81,6 +82,7 @@ export const liveClient: WakefieldClient = {
     const response = await fetch(`${base()}/api/uploads`, { method: "POST", body });
     if (!response.ok) await readError(response);
     const payload = (await response.json()) as { photoId: string; imagePath: string; uploadUrl?: string };
+    rememberPreview(payload.photoId, file);
     if (payload.uploadUrl) await putWithProgress(payload.uploadUrl, file, onProgress);
     else onProgress({ loaded: file.size, total: file.size, indeterminate: false });
     const result: UploadResult = { photoId: payload.photoId, imagePath: payload.imagePath, storage: "remote" };

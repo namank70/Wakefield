@@ -37,7 +37,7 @@ Inputs:
 }
 ```
 
-`provider` must be one of `eaiser`, `cached`, or `mock` so the demo never misrepresents fallback output as live analysis.
+`provider` must be one of `eaiser`, `cached`, or `mock` so the UI can distinguish an external result from saved labels or manual review.
 
 ## Bounded taxonomy
 
@@ -53,25 +53,17 @@ Inputs:
 
 ## Required fallback behavior
 
-Handle unsupported files, oversized images, unclear images, no recognizable issue, provider timeout, quota exhaustion, and authentication failure with structured errors. Keep successful normalized responses cached for the five demo scenarios defined in the work plan.
+Handle unsupported files, oversized images, unclear images, no recognizable issue, provider timeout, quota exhaustion, and authentication failure with structured errors. Keep successful normalized responses cached for the prepared photo examples.
 
 ## Environment boundary
 
 EAiSER credentials stay server-side. The browser calls Wakefield's `/api/analyze` endpoint; it never calls EAiSER directly.
 
-## Implementation status
+## Current status
 
-The Studio prototype now calls the confirmed SDK method
-`await EAiSER.image.analyze(file)` directly. It renders the returned analysis
-through the existing confirmation and report flow.
+The EAiSER Studio image-analysis namespace and live report-submission method have not been confirmed. Earlier attempts to call `EAiSER.image.analyze(file)` failed at runtime because `EAiSER.image` was undefined. No Studio source file should call that guessed method or claim an EAiSER result until the actual Studio runtime exposes and successfully runs a supported method.
 
-The optional server-side provider adapter lives in `server/eaiser-adapter.mjs`
-for a future non-Studio deployment. It is not used by the College SDK sandbox,
-which requires no credentials or external endpoint.
-
-The remaining final-integration input is the backend framework route, if the
-team later deploys outside the Studio sandbox. For the current prototype,
-there are no provider credentials or external endpoint values to configure.
+The standalone Next.js server adapter in `src/lib/server/wakefield.ts` can call a configured `EAISER_API_URL` and optional server-side `EAISER_API_KEY`. The provider endpoint, authentication format, and response schema still need confirmation from Momntum. Without that configuration, the server returns a manual-review starting point. It does not send a report to campus staff.
 
 ## Before production activation
 
@@ -82,6 +74,6 @@ Confirm with the Momntum team:
 3. Whether campus context can accompany the image
 4. Available classifications and fields
 5. Rate limits, quota, and latency
-6. Development versus demo credentials
+6. Development versus production credentials
 
 Do not invent the native EAiSER request shape until those answers are confirmed.

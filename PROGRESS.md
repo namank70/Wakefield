@@ -1,31 +1,21 @@
-# Progress
+# Wakefield status
 
-Phase 2 frontend on `frontend/phase-2`. Phase 1 remains on `frontend/phase-1`.
+The integrated GitHub application is the Next.js app in this repository. Start it with `scripts/run-wakefield.cmd` on Windows or follow the root README.
 
-## Phase 2
+## Integrated experience
 
-- Campus health is the average of named campus buildings, so one damaged building cannot paint the whole campus red.
-- A building bar appears on the map only while that building is below 100.
-- Credits for reporting, confirming, verifying, and a demo redeem catalog.
-- Student and University desks. University claim and mark-fixed restore health. A student can confirm the repair or send it back.
-- Repeated reports step an issue up one severity band at the third report and sort it first on the fixing list.
+- SJSU campus map with named building and walkway search, precise location selection, and selected-feature highlighting.
+- Photo-led reporting with a prepared four-photo sequence, upload/camera support, and editable review before saving.
+- A ranked priority queue that increases the weight of repeated, urgent, accessibility-impacting, and waiting reports.
+- Student and University workflows for assignment, repair, and student verification, plus building health and impact points.
+- A rewards catalog that deducts points and creates an in-app claim code.
+- Responsive computer and phone layouts, local presentation controls, and a one-click Windows launcher.
 
-## Done
+## Connection boundaries
 
-- Next.js App Router app with TypeScript, Tailwind, Leaflet, Turf, and Lucide.
-- `WakefieldClient` with a mock implementation and an isolated live client.
-- OpenStreetMap buildings, paths, streets, entrances, bicycle parking, pilot footprints, and both boundaries, cached and attributed.
-- `npm.cmd run validate:geo` passes for the four landmark relationships.
-- Dark vector map, inverse mask, clamped pan and zoom, landmark search, fit, and recenter.
-- Local reveal scoring in `src/lib/activation/reveal.ts`, separate from the layer paint.
-- Camera, file fallback, location confirmation, mock analysis, duplicate suggestion, and submit.
-- Issue drawer on desktop and bottom sheet on mobile. Submitting does not move the map.
-- Demo controls, session photo previews, and `localStorage` reset.
-- Browser pass: baseline linework, library signal, urgent signal, photo fallback, seeded pin, duplicate merge, view signal, and reset to zero open signals.
-- `npm.cmd run lint` and `npm.cmd run build`.
+- The default presentation setup stores activity in the browser. It does not send reports to campus staff.
+- Prepared photos use their saved classifications. Other uploaded images require manual review unless a real image provider is configured.
+- EAiSER Studio and the GitHub application are separate. The Studio SDK image-analysis method has not been verified for this project.
+- Reward codes are in-app claims; campus vendors are not connected to fulfill them.
 
-## Not in this phase
-
-- Real EAiSER calls, uploads to object storage, or responder actions.
-- Wiring the map to live `getMapState`.
-- A leaderboard, scan effects, or a claim that quiet means safe.
+See `docs/PRESENTATION_SCRIPT.md` for the ordered walkthrough and `docs/EAISER_INTEGRATION.md` for the provider setup status.

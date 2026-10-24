@@ -50,7 +50,7 @@ export function evidenceBonus(issue: Issue, reports: Report[]) {
 export function issueScore(issue: Issue, reports: Report[]) {
   if (!isUnresolved(issue)) return 0;
   if (issue.severity === "urgent") return severityWeight.urgent;
-  return severityWeight[issue.severity] + evidenceBonus(issue, reports);
+  return severityWeight[issue.severity] + (issue.accessibilityImpact ? 2 : 0) + evidenceBonus(issue, reports);
 }
 
 export function levelForIssue(issue: Issue, reports: Report[]): RevealLevel {
@@ -59,12 +59,9 @@ export function levelForIssue(issue: Issue, reports: Report[]): RevealLevel {
   const score = issueScore(issue, reports);
   let level: RevealLevel = 0;
   if (score >= 10) level = 4;
-  else if (score >= 6) level = 3;
-  else if (score >= 5) level = 2;
+  else if (score >= 5) level = 3;
   else if (score >= 3) level = 2;
   else if (score >= 1) level = 1;
-  if (issue.accessibilityImpact && level > 0 && level < 3) level = 3;
-  if (issue.accessibilityImpact && level === 0) level = 3;
   return level;
 }
 
@@ -116,13 +113,11 @@ export function revealForIssues(issues: Issue[], reports: Report[]) {
   const open = issues.filter(isUnresolved);
   const score = open.reduce((sum, issue) => sum + issueScore(issue, reports), 0);
   const urgent = open.some((issue) => issue.severity === "urgent");
-  const access = open.some((issue) => issue.accessibilityImpact);
   let level: RevealLevel = 0;
   if (urgent) level = 4;
   else if (score >= 10) level = 4;
-  else if (score >= 6) level = 3;
+  else if (score >= 5) level = 3;
   else if (score >= 3) level = 2;
   else if (score >= 1) level = 1;
-  if (access && level < 3 && open.length > 0) level = Math.max(level, 3) as RevealLevel;
   return { level, score, urgent };
 }

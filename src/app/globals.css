@@ -76,12 +76,53 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.wake-map-host,
 .wake-map,
 .maplibregl-map {
+  position: absolute;
+  inset: 0;
   height: 100%;
   width: 100%;
   background: #070b14;
   font: inherit;
+}
+
+.wake-map-host {
+  overflow: hidden;
+}
+
+.wake-map-fallback {
+  position: absolute;
+  inset: 0;
+  background: #070b14 url("/campus-map.svg") center / cover no-repeat;
+}
+
+.wake-map {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.wake-map.is-ready {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wake-map-status {
+  position: absolute;
+  z-index: 18;
+  top: 4rem;
+  left: 50%;
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%);
+  padding: 0.45rem 0.75rem;
+  color: #d8e7f5;
+  background: rgb(9 16 29 / 90%);
+  border: 1px solid rgb(38 217 255 / 24%);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-align: center;
+  backdrop-filter: blur(12px);
 }
 
 .maplibregl-ctrl-logo,
@@ -241,6 +282,7 @@ textarea {
 .swatch.stirring { border-top-style: dashed; border-top-color: #8b5cf6; }
 .swatch.active { border-top-color: #26d9ff; border-top-width: 3px; }
 .swatch.urgent { border-top-color: #ff4057; border-top-width: 3px; }
+.swatch.recovered { border-top-color: #3dff9a; border-top-width: 3px; }
 
 .wake-legend-note {
   display: block;
@@ -328,6 +370,7 @@ textarea {
 }
 
 .wake-report {
+  z-index: 40;
   top: 4.4rem;
   right: 0.8rem;
   width: min(24rem, calc(100% - 1.6rem));
@@ -351,25 +394,205 @@ textarea {
 }
 
 .wake-demo {
-  top: 8.2rem;
-  left: 1rem;
-  width: min(18rem, calc(100% - 2rem));
-  max-height: calc(100dvh - 12rem);
+  top: 8.35rem;
+  left: 5.4rem;
+  width: min(21rem, calc(100% - 6.2rem));
+  max-height: calc(100dvh - 10rem);
   overflow: auto;
-  padding: 0.6rem;
-  background: rgb(16 24 42 / 96%);
-  border-radius: 12px;
+  padding: 0.85rem;
+  background: rgb(10 18 32 / 94%);
+  border: 1px solid rgb(38 217 255 / 22%);
+  border-radius: 15px;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 32%);
+  backdrop-filter: blur(14px);
 }
 
 @media (max-width: 767px) {
   .wake-demo {
     top: 10.4rem;
+    left: 0.55rem;
+    width: min(21rem, calc(100% - 1.1rem));
+    max-height: 38dvh;
   }
 }
 
-.wake-demo summary {
-  list-style: none;
-  cursor: pointer;
+.wake-demo-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.wake-demo-mascot {
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #071018;
+  background: #26d9ff;
+  border-radius: 50%;
+  box-shadow: 0 0 22px rgb(38 217 255 / 24%);
+}
+
+.wake-demo-eyebrow,
+.wake-sample-kicker {
+  color: #26d9ff;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.61rem;
+  letter-spacing: 0.12em;
+}
+
+.wake-demo-title {
+  margin-top: 0.12rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.08rem;
+  font-weight: 650;
+  line-height: 1.12;
+}
+
+.wake-demo-copy {
+  margin: 0.55rem 0 0.65rem;
+  color: #b5c2d4;
+  font-size: 0.79rem;
+  line-height: 1.35;
+}
+
+.wake-demo-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.wake-demo-metrics span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.38rem 0.2rem;
+  color: #afbed2;
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 8px;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.wake-demo-metrics svg { color: #26d9ff; }
+.wake-demo-metrics b { color: #f3f7fc; font-family: var(--font-mono), monospace; }
+
+.wake-demo .wake-demo-primary,
+.wake-demo .wake-demo-action,
+.wake-demo .wake-demo-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.wake-demo .wake-demo-primary {
+  color: #071018;
+  background: #26d9ff;
+  border-color: #26d9ff;
+  font-weight: 700;
+}
+
+.wake-demo .wake-demo-primary:hover { background: #79eaff; }
+.wake-demo .wake-demo-action { background: rgb(255 255 255 / 4%); font-size: 0.8rem; }
+.wake-demo .wake-demo-action span { color: #26d9ff; font-size: 1.1rem; line-height: 1; }
+.wake-demo .wake-demo-reset { background: transparent; border-color: transparent; color: #aebbd0; font-size: 0.72rem; }
+
+.wake-priority-spotlight {
+  display: grid;
+  gap: 0.42rem;
+  margin: 0.4rem 0 0.55rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid rgb(255 181 71 / 32%);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgb(255 181 71 / 9%), rgb(38 217 255 / 5%));
+}
+
+.wake-priority-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffc766;
+  font: 600 0.62rem/1.2 var(--font-mono), monospace;
+  letter-spacing: 0.1em;
+}
+
+.wake-priority-topline span { display: flex; align-items: center; gap: 0.3rem; }
+.wake-priority-topline b { color: #fff2d6; font-size: 0.82rem; }
+
+.wake-priority-spotlight > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #eef5ff;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.wake-priority-spotlight small { color: #aebbd0; font-size: 0.65rem; }
+.wake-priority-empty { margin: 0.35rem 0 0.55rem; color: #aebbd0; font-size: 0.75rem; }
+.wake-guided-actions { margin-top: 0.3rem; border-top: 1px solid rgb(255 255 255 / 9%); padding-top: 0.5rem; }
+.wake-guided-actions summary { cursor: pointer; color: #aebbd0; font-size: 0.72rem; }
+.wake-guided-actions[open] summary { margin-bottom: 0.45rem; }
+.wake-guided-actions .wake-demo-action { margin-top: 0.3rem; }
+
+.wake-demo-footnote {
+  margin-top: 0.5rem;
+  color: #8192aa;
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.wake-sample-set {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.wake-sample-note {
+  margin-top: 0.2rem;
+  color: #9eacc0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.wake-sample-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.wake-report .wake-sample-card {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.35rem;
+  text-align: left;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.wake-sample-card img {
+  width: 3rem;
+  height: 2.5rem;
+  object-fit: cover;
+  border-radius: 5px;
 }
 
 .wake-banner,

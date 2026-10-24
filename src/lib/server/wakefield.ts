@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { stepSeverity } from "@/lib/health/score";
 import type {
   AnalysisResult,
   CreateReportInput,
@@ -169,14 +170,14 @@ export async function analyzePhoto(photoId: string, context: { campusId: string;
   }
 
   const cached = normalizeAnalysis({
-    category: "bike_scooter_parking",
-    summary: "Bikes and scooters are blocking the pedestrian route",
-    severity: "high",
-    department: "Transportation and Parking Services",
-    confidence: 0.92,
-    accessibilityImpact: true,
-    tags: ["blocked-path", "bike", "scooter"],
-  }, "cached");
+    category: "other",
+    summary: "Photo attached. Add a description and review the category; image analysis is not configured on this server.",
+    severity: "low",
+    department: "Manual review",
+    confidence: 0,
+    accessibilityImpact: false,
+    tags: ["needs-review"],
+  }, "mock");
   analysisCache.set(photoId, cached);
   return cached;
 }
@@ -214,8 +215,7 @@ export function createReport(input: CreateReportInput): CreateReportResponse {
   };
   const reportId = id("report");
   const report: Report = { id: reportId, issueId: issue.id, reporterId: input.reporterId, photoId: input.photoId, latitude: input.latitude, longitude: input.longitude, locationSource: input.locationSource, locationAccuracyMeters: input.locationAccuracyMeters, studentDescription: input.studentDescription, aiConfidence: input.analysis.confidence, analysisProvider: input.analysis.provider, createdAt: timestamp };
-  issue.reportCount += 1;
-  issue.updatedAt = timestamp;
+  Object.assign(issue, stepSeverity({ ...issue, reportCount: issue.reportCount + 1, updatedAt: timestamp }));
   issues.set(issue.id, issue);
   reports.set(report.id, report);
   if (input.photoId) photoEvidence.set(input.photoId, { id: id("evidence"), issueId: issue.id, reportId: report.id, kind: duplicate ? "evidence" : "before", storagePath: photos.get(input.photoId)?.imagePath ?? input.photoId, createdAt: timestamp });

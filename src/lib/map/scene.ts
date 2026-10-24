@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection } from "geojson";
 import type { FilterSpecification, GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
-import { isUnresolved, levelForIssue, prototypeRevealResolver, type LocalReveal } from "@/lib/activation/reveal";
+import { isUnresolved, issueScore, prototypeRevealResolver, type LocalReveal } from "@/lib/activation/reveal";
 import { colors, extrusionMeters } from "@/lib/config/display";
 import { landmarks } from "@/data/geo/landmarks";
 import {
@@ -14,6 +14,7 @@ import {
   streetLineCollection,
 } from "@/lib/geo/campus";
 import { metersToGeometry } from "@/lib/geo/distance";
+import type { FocusLocation } from "@/lib/state/store";
 import type { Issue, Report, RevealLevel } from "@/lib/types";
 
 const library = landmarks.find((landmark) => landmark.id === "library")!;
@@ -24,9 +25,10 @@ export type SceneInput = {
   issues: Issue[];
   reports: Report[];
   previewLevel: RevealLevel | null;
+  focusLocation: FocusLocation | null;
 };
 
-type Frame = "quiet" | "stirring" | "active" | "urgent";
+type Frame = "quiet" | "stirring" | "active" | "urgent" | "recovered";
 
 const shownHeights = new Map<string, number>();
 let heightFrame = 0;
@@ -70,16 +72,20 @@ function revealFor(feature: Feature, kind: "building" | "path" | "facility", inp
     };
   }
   const properties = feature.properties as { id?: string; landmarkId?: string } | null;
-  return prototypeRevealResolver.resolve(
-    {
-      id: properties?.id ?? String(feature.id ?? ""),
-      kind,
-      geometry: feature.geometry,
-      landmarkId: properties?.landmarkId,
-    },
-    input.issues,
+  const target = {
+    id: properties?.id ?? String(feature.id ?? ""),
+    kind,
+    geometry: feature.geometry,
+    landmarkId: properties?.landmarkId,
+  };
+  const current = prototypeRevealResolver.resolve(target, input.issues, input.reports);
+  if (current.level > 0) return current;
+  const healed = prototypeRevealResolver.resolve(
+    target,
+    input.issues.filter((issue) => issue.status === "resolved").map((issue) => ({ ...issue, status: "open" as const })),
     input.reports,
   );
+  return healed.level > 0 ? { ...healed, status: "resolved" } : current;
 }
 
 function paintBuildings(input: SceneInput): FeatureCollection {
@@ -88,21 +94,22 @@ function paintBuildings(input: SceneInput): FeatureCollection {
     features: buildingCollection.features.map((feature) => {
       const band = feature.properties?.band === "block" ? "block" : "campus";
       const reveal = revealFor(feature, "building", input);
-      const frame = frameFor(reveal.level, reveal.urgent);
-      const color = tone(reveal);
+      const recovered = reveal.status === "resolved";
+      const frame = recovered ? "recovered" : frameFor(reveal.level, reveal.urgent);
+      const color = recovered ? colors.healthy : tone(reveal);
       const quietFill = band === "block" ? "#121A2C" : "#10182A";
       return {
         type: "Feature",
         id: feature.id,
         properties: {
           id: featureKey(feature),
-          height: extrusionMeters[reveal.level],
+          height: recovered ? Math.min(8, extrusionMeters[reveal.level]) : extrusionMeters[reveal.level],
           level: reveal.level,
           urgent: reveal.urgent ? 1 : 0,
           frame,
           color,
-          fill: reveal.level === 0 ? quietFill : color,
-          fillOpacity: reveal.level === 0 ? (band === "block" ? 0.55 : 0.4) : 0.22,
+          fill: reveal.level === 0 && !recovered ? quietFill : color,
+          fillOpacity: recovered ? 0.18 : reveal.level === 0 ? (band === "block" ? 0.55 : 0.4) : 0.22,
           band,
         },
         geometry: feature.geometry,
@@ -116,13 +123,14 @@ function paintPaths(input: SceneInput): FeatureCollection {
     type: "FeatureCollection",
     features: pathCollection.features.map((feature) => {
       const reveal = revealFor(feature, "path", input);
+      const recovered = reveal.status === "resolved";
       return {
         type: "Feature",
         id: feature.id,
         properties: {
-          color: reveal.level === 0 ? "#8EA3BD" : tone(reveal),
-          width: reveal.level >= 3 ? 2.6 : 1.4,
-          opacity: reveal.level === 0 ? 0.9 : 0.95,
+          color: recovered ? colors.healthy : reveal.level === 0 ? "#8EA3BD" : tone(reveal),
+          width: recovered || reveal.level >= 3 ? 2.6 : 1.4,
+          opacity: reveal.level === 0 && !recovered ? 0.9 : 0.95,
         },
         geometry: feature.geometry,
       };
@@ -132,9 +140,17 @@ function paintPaths(input: SceneInput): FeatureCollection {
 
 function regionScore(regionId: string, input: SceneInput) {
   const open = input.issues.filter((issue) => isUnresolved(issue) && issue.regionId === regionId);
+  const score = open.reduce((sum, issue) => sum + issueScore(issue, input.reports), 0);
+  const urgent = open.some((issue) => issue.severity === "urgent");
+  let level: number = 0;
+  if (urgent || score >= 10) level = 4;
+  else if (score >= 5) level = 3;
+  else if (score >= 3) level = 2;
+  else if (score >= 1) level = 1;
   return {
-    level: open.reduce((highest, issue) => Math.max(highest, levelForIssue(issue, input.reports)), 0),
-    urgent: open.some((issue) => issue.severity === "urgent"),
+    level,
+    urgent,
+    recovered: open.length === 0 && input.issues.some((issue) => issue.regionId === regionId && issue.status === "resolved"),
   };
 }
 
@@ -147,12 +163,13 @@ function paintRegions(input: SceneInput): FeatureCollection {
       const scored = regionScore(regionId, input);
       const level = Math.max(preview, scored.level);
       const urgent = scored.urgent;
+      const recovered = level === 0 && scored.recovered;
       return {
         type: "Feature" as const,
         id: feature.id,
         properties: {
-          frame: frameFor(level, urgent),
-          color: urgent ? colors.urgent : level >= 3 ? colors.cyan : level >= 1 ? colors.violet : "#8EA4BE",
+          frame: recovered ? "recovered" : frameFor(level, urgent),
+          color: recovered ? colors.healthy : urgent ? colors.urgent : level >= 3 ? colors.cyan : level >= 1 ? colors.violet : "#8EA4BE",
         },
         geometry: feature.geometry,
       };
@@ -171,7 +188,7 @@ function paintFacilities(input: SceneInput): FeatureCollection {
         {
           type: "Feature" as const,
           id: feature.id,
-          properties: { color: kind === "bicycle_parking" ? colors.violet : colors.amber },
+          properties: { color: reveal.status === "resolved" ? colors.healthy : kind === "bicycle_parking" ? colors.violet : colors.amber },
           geometry: feature.geometry,
         },
       ];
@@ -220,6 +237,8 @@ export function ensureLayers(map: MapLibreMap) {
   add("buildings", empty);
   add("regions", empty);
   add("facilities", empty);
+  add("focus-building", empty);
+  add("focus-path", empty);
   add("reporting", reportingBoundary!);
   add("movement", movementBoundary!);
 
@@ -275,10 +294,12 @@ export function ensureLayers(map: MapLibreMap) {
   map.addLayer(outline("buildings-stirring", "stirring", 1.8, 1, [2, 1.3]));
   map.addLayer(outline("buildings-active", "active", 2.4, 1));
   map.addLayer(outline("buildings-urgent", "urgent", 2.6, 1));
+  map.addLayer(outline("buildings-recovered", "recovered", 2.1, 0.9));
   map.addLayer(outline("regions-quiet", "quiet", 1.6, 0.45, [2, 2]));
   map.addLayer(outline("regions-stirring", "stirring", 2.2, 0.95, [2.2, 1.4]));
   map.addLayer(outline("regions-active", "active", 2.8, 1));
   map.addLayer(outline("regions-urgent", "urgent", 3, 1));
+  map.addLayer(outline("regions-recovered", "recovered", 2.8, 0.9));
   map.addLayer({
     id: "reporting",
     type: "line",
@@ -302,6 +323,36 @@ export function ensureLayers(map: MapLibreMap) {
       "circle-stroke-width": 1.5,
       "circle-stroke-color": ["get", "color"],
     },
+  });
+  map.addLayer({
+    id: "focus-building-fill",
+    type: "fill",
+    source: "focus-building",
+    paint: { "fill-color": colors.cyan, "fill-opacity": 0.16 },
+  });
+  map.addLayer({
+    id: "focus-building-glow",
+    type: "line",
+    source: "focus-building",
+    paint: { "line-color": colors.cyan, "line-width": 9, "line-blur": 5, "line-opacity": 0.72 },
+  });
+  map.addLayer({
+    id: "focus-building-outline",
+    type: "line",
+    source: "focus-building",
+    paint: { "line-color": "#C7F8FF", "line-width": 2.8, "line-opacity": 1 },
+  });
+  map.addLayer({
+    id: "focus-path-glow",
+    type: "line",
+    source: "focus-path",
+    paint: { "line-color": colors.cyan, "line-width": 12, "line-blur": 6, "line-opacity": 0.76 },
+  });
+  map.addLayer({
+    id: "focus-path-outline",
+    type: "line",
+    source: "focus-path",
+    paint: { "line-color": "#D9FCFF", "line-width": 4.2, "line-opacity": 1 },
   });
 }
 
@@ -352,6 +403,17 @@ export function syncScene(map: MapLibreMap, input: SceneInput, reduced: boolean)
   source(map, "paths").setData(paintPaths(input));
   source(map, "regions").setData(paintRegions(input));
   source(map, "facilities").setData(paintFacilities(input));
+  const focus = input.focusLocation;
+  const buildingFeatures = focus?.kind === "building"
+    ? buildingCollection.features.filter((feature) => feature.properties?.landmarkId === focus.id
+      || String(feature.id ?? feature.properties?.id ?? "") === focus.id
+      || feature.properties?.name === focus.name)
+    : [];
+  const pathFeatures = focus?.kind === "path"
+    ? pathCollection.features.filter((feature) => feature.properties?.name === focus.name)
+    : [];
+  source(map, "focus-building").setData({ type: "FeatureCollection", features: buildingFeatures });
+  source(map, "focus-path").setData({ type: "FeatureCollection", features: pathFeatures });
   if (reduced || rising.length === 0) return;
   const layers = ["buildings-active", "regions-active"];
   if (rising.some((feature) => feature.properties?.urgent === 1)) layers.push("buildings-urgent", "regions-urgent");

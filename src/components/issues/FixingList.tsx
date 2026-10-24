@@ -1,7 +1,7 @@
 "use client";
 
 import { categories, severityLabels } from "@/lib/config/display";
-import { fixingOrder } from "@/lib/health/score";
+import { fixingOrder, issuePriorityScore } from "@/lib/health/score";
 import { getClient } from "@/lib/api";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
@@ -38,15 +38,15 @@ export function FixingList() {
 
   return (
     <section className="wake-signals" aria-label="Fixing list">
-      <h2 className="font-display text-lg">Fixing list</h2>
-      <p className="mt-1 text-sm text-slate-300">Repeated and urgent signals are listed first. Marking one fixed restores its health.</p>
+      <h2 className="font-display text-lg">Priority queue</h2>
+      <p className="mt-1 text-sm text-slate-300">More reports raise a signal&apos;s priority. Urgency and accessibility impact count too.</p>
       {queue.length === 0 ? <p className="mt-4 text-sm">Nothing is waiting on the university.</p> : null}
       <ul className="mt-3 space-y-2">
         {queue.map((issue) => (
           <li key={issue.id} className="rounded-md border border-white/10 bg-black/20 p-3">
             <button type="button" className="w-full text-left" onClick={() => campusStore.selectIssue(issue.id, false)}>
               <span className="font-mono text-[10px] uppercase tracking-wider text-cyan">
-                {severityLabels[issue.severity]} · {issue.reportCount} report{issue.reportCount === 1 ? "" : "s"} · {issue.status.replaceAll("_", " ")}
+                PRIORITY {issuePriorityScore(issue)} · {severityLabels[issue.severity]} · {issue.reportCount} report{issue.reportCount === 1 ? "" : "s"} · {issue.status.replaceAll("_", " ")}
               </span>
               <span className="mt-1 block text-sm">{issue.summary}</span>
               <span className="mt-1 block text-xs text-slate-400">{categories.find((item) => item.id === issue.category)?.label ?? issue.category}</span>

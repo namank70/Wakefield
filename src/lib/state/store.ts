@@ -2,6 +2,8 @@ import { bearing, destination, point } from "@turf/turf";
 import { evidenceBonus, isUnresolved, revealForIssues } from "@/lib/activation/reveal";
 import { clearPreviews, previewUrl, readBlobWithProgress, rememberPreview } from "@/lib/api/images";
 import { activationThreshold, campusId, duplicateRule } from "@/lib/config/display";
+import { demoScenarios } from "@/lib/demo/scenarios";
+import type { DemoScenario } from "@/lib/demo/scenarios";
 import { creditBalance, rewards, stepSeverity } from "@/lib/health/score";
 import { isInsideReporting, landmarks, metersBetween, nearestLandmark, regionIdFor, regionNameFor, seededLibraryPin } from "@/lib/geo/campus";
 import type {
@@ -53,6 +55,8 @@ export type DraftLocation = {
   source: LocationSource;
 };
 
+export type FocusLocation = { id: string; name: string; kind: "building" | "path" };
+
 export type CampusSnapshot = Persisted & {
   ready: boolean;
   selectedIssueId: string | null;
@@ -64,6 +68,7 @@ export type CampusSnapshot = Persisted & {
   viewCommand: ViewCommand | null;
   placingPin: boolean;
   draftLocation: DraftLocation | null;
+  focusLocation: FocusLocation | null;
   reportOpen: boolean;
 };
 
@@ -80,6 +85,7 @@ let notice: string | null = null;
 let viewCommand: ViewCommand | null = null;
 let placingPin = false;
 let draftLocation: DraftLocation | null = null;
+let focusLocation: FocusLocation | null = null;
 let reportOpen = false;
 let commandId = 0;
 const listeners = new Set<() => void>();
@@ -101,6 +107,7 @@ function snapshot(): CampusSnapshot {
     viewCommand,
     placingPin,
     draftLocation,
+    focusLocation,
     reportOpen,
   };
 }
@@ -121,6 +128,7 @@ const serverSnapshot: CampusSnapshot = {
   viewCommand: null,
   placingPin: false,
   draftLocation: null,
+  focusLocation: null,
   reportOpen: false,
 };
 
@@ -304,11 +312,13 @@ export const campusStore = {
     reportOpen = true;
     placingPin = false;
     draftLocation = null;
+    focusLocation = null;
     publish();
   },
   closeReport() {
     reportOpen = false;
     placingPin = false;
+    focusLocation = null;
     publish();
   },
   setPlacingPin(value: boolean) {
@@ -319,6 +329,10 @@ export const campusStore = {
     draftLocation = location;
     publish();
   },
+  setFocusLocation(location: FocusLocation | null) {
+    focusLocation = location;
+    publish();
+  },
   reset() {
     persisted = emptyPersisted();
     clearPreviews();
@@ -326,12 +340,42 @@ export const campusStore = {
     previewLevel = null;
     pendingSignalId = null;
     draftLocation = null;
+    focusLocation = null;
     placingPin = false;
     reportOpen = false;
-    notice = "Demo reset. The map is back to the quiet campus outline.";
+    notice = "Campus view reset. Ready for the next signal.";
     if (typeof window !== "undefined") window.localStorage.removeItem(storageKey);
     commandId += 1;
     viewCommand = { id: commandId, kind: "fit" };
+    publish();
+  },
+  loadDemoStory() {
+    let added = 0;
+    for (const scenario of demoScenarios) {
+      if (appendDemoScenario(scenario)) added += 1;
+    }
+    selectedIssueId = null;
+    pendingSignalId = null;
+    panel = "map";
+    previewLevel = null;
+    commandId += 1;
+    viewCommand = { id: commandId, kind: "fit" };
+    notice = added
+      ? `${added} photo-backed campus signals added. Saved classifications are labeled; nothing was sent to EAiSER.`
+      : "The photo sequence is already on the map. Reset campus activity to replay it.";
+    save();
+    publish();
+  },
+  addDemoScenario(scenarioId: string) {
+    const scenario = demoScenarios.find((item) => item.id === scenarioId);
+    if (!scenario) return;
+    const added = appendDemoScenario(scenario);
+    selectedIssueId = scenario.id;
+    pendingSignalId = null;
+    notice = added
+      ? `${scenario.title} added from a labeled saved photo example. The map is responding to the signal.`
+      : `${scenario.title} is already on the map.`;
+    save();
     publish();
   },
   async uploadPhoto(file: Blob, onProgress: (update: UploadProgress) => void): Promise<UploadResult> {
@@ -352,13 +396,13 @@ export const campusStore = {
   async analyzePhoto(): Promise<AnalysisResult> {
     await wait(700);
     return {
-      category: "bike_scooter_parking",
-      summary: "Bikes and scooters are blocking the pedestrian route.",
-      severity: "high",
-      department: "Transportation and Parking Services",
-      confidence: 0.86,
-      accessibilityImpact: true,
-      tags: ["blocked-path", "bike", "scooter"],
+      category: "other",
+      summary: "Photo attached. Describe what needs attention and choose the right category before saving; this workspace does not inspect image contents.",
+      severity: "low",
+      department: "Manual review",
+      confidence: 0,
+      accessibilityImpact: false,
+      tags: ["needs-review"],
       provider: "mock",
     };
   },
@@ -468,8 +512,8 @@ export const campusStore = {
     };
     pendingSignalId = issue.id;
     notice = duplicate
-      ? `Evidence added. +${earned.delta} credits.${issue.escalated ? " Repeated reports moved this signal up the fixing list." : ""}`
-      : `Signal submitted. +${earned.delta} credits. The map stayed where you left it.`;
+      ? `Evidence added. +${earned.delta} impact points. Regional priority rose; building damage is counted once per issue.`
+      : `Signal submitted. +${earned.delta} impact points. Watch the nearby map region respond.`;
     save();
     publish();
     return {
@@ -489,7 +533,11 @@ export const campusStore = {
     return issueDetail(issueId);
   },
   previewFor(photoId: string | null) {
-    return photoId ? previewUrl(photoId) : null;
+    if (!photoId) return null;
+    const localPreview = previewUrl(photoId);
+    if (localPreview) return localPreview;
+    const photo = persisted.photos.find((item) => item.id === photoId);
+    return photo?.storagePath.startsWith("/demo/") ? photo.storagePath : null;
   },
   addLibrarySignal() {
     const created = ensureIssue({
@@ -513,10 +561,21 @@ export const campusStore = {
     publish();
     save();
   },
-  addIndependentEvidence() {
-    if (!persisted.issues.some((issue) => issue.id === "issue-demo-library")) this.addLibrarySignal();
-    const issue = persisted.issues.find((item) => item.id === "issue-demo-library");
-    if (!issue) return;
+  addIndependentEvidence(issueId?: string) {
+    let issue = issueId
+      ? persisted.issues.find((item) => item.id === issueId)
+      : persisted.issues
+        .filter((item) => item.category === "walkway_obstruction" && item.accessibilityImpact && isUnresolved(item))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (!issue && !issueId) {
+      this.addDemoScenario("demo-chairs");
+      issue = persisted.issues.find((item) => item.id === "demo-chairs");
+    }
+    if (!issue) {
+      notice = "Add a walkway-obstruction sample to the map before inviting another student to confirm it.";
+      publish();
+      return;
+    }
     const reporters = new Set(persisted.reports.filter((report) => report.issueId === issue.id).map((report) => report.reporterId));
     const reporterId = !reporters.has("scout-2") ? "scout-2" : !reporters.has("scout-3") ? "scout-3" : null;
     if (!reporterId) {
@@ -527,7 +586,7 @@ export const campusStore = {
     }
     const now = new Date().toISOString();
     const report: Report = {
-      id: `report-demo-library-${reporterId}`,
+      id: `${issue.id}-report-${reporterId}`,
       issueId: issue.id,
       reporterId,
       photoId: null,
@@ -535,7 +594,7 @@ export const campusStore = {
       longitude: issue.longitude,
       locationSource: "manual",
       locationAccuracyMeters: null,
-      studentDescription: "Another student confirms the scooters are still blocking the library walkway.",
+      studentDescription: `Another student independently confirms: ${issue.summary}`,
       aiConfidence: 0.86,
       analysisProvider: "mock",
       createdAt: now,
@@ -563,9 +622,7 @@ export const campusStore = {
     };
     selectedIssueId = issue.id;
     pendingSignalId = null;
-    notice = updated.escalated && !issue.escalated
-      ? "A third report moved this signal up the fixing list."
-      : "Independent evidence added to the library signal. Repeated reports from the same demo identity would not raise the cap.";
+    notice = "Independent evidence added. The regional activation score rises, but building damage is still counted once per issue.";
     save();
     publish();
   },
@@ -654,7 +711,7 @@ export const campusStore = {
       ],
     };
     notice = status === "awaiting_verification"
-      ? "Marked fixed. Health returns while students confirm the repair."
+      ? "Marked fixed. Building health stays affected until a student verifies the repair."
       : "Signal claimed. The map stayed where it is.";
     save();
     publish();
@@ -709,9 +766,9 @@ export const campusStore = {
   },
   redeem(actorId: string, rewardId: string) {
     const reward = rewards.find((item) => item.id === rewardId);
-    if (!reward) throw new Error("That reward is not in the demo catalog.");
+    if (!reward) throw new Error("That reward is no longer available.");
     if (creditBalance(persisted.credits, actorId) < reward.cost) {
-      notice = "Not enough credits for that reward.";
+      notice = "Not enough impact points for that reward.";
       publish();
       throw new Error(notice);
     }
@@ -719,7 +776,7 @@ export const campusStore = {
       ...persisted,
       credits: [...persisted.credits, credit(actorId, null, "redeem", -reward.cost, reward.label)],
     };
-    notice = `Redeemed ${reward.label}. This catalog is demo data, not a real vendor.`;
+    notice = `Reward claimed: ${reward.label}. Your points were deducted and a claim code is ready.`;
     save();
     publish();
   },
@@ -796,6 +853,71 @@ function ensureIssue(input: {
     credits: [...persisted.credits, credit(input.reporterId, issue.id, "first-report", 10, "First report")],
   };
   selectedIssueId = issue.id;
+  return true;
+}
+
+function appendDemoScenario(scenario: DemoScenario) {
+  if (persisted.issues.some((issue) => issue.id === scenario.id)) return false;
+  const now = new Date().toISOString();
+  const photoId = `${scenario.id}-photo`;
+  const issue: Issue = {
+    id: scenario.id,
+    campusId,
+    regionId: scenario.regionId,
+    buildingId: scenario.buildingId,
+    category: scenario.analysis.category,
+    summary: scenario.analysis.summary,
+    severity: scenario.analysis.severity,
+    department: scenario.analysis.department,
+    status: "open",
+    latitude: scenario.latitude,
+    longitude: scenario.longitude,
+    accessibilityImpact: scenario.analysis.accessibilityImpact,
+    reportCount: 1,
+    tags: scenario.analysis.tags,
+    createdAt: now,
+    updatedAt: now,
+    resolvedAt: null,
+  };
+  const report: Report = {
+    id: `${scenario.id}-report-scout-1`,
+    issueId: issue.id,
+    reporterId: "scout-1",
+    photoId,
+    latitude: issue.latitude,
+    longitude: issue.longitude,
+    locationSource: "manual",
+    locationAccuracyMeters: null,
+    studentDescription: scenario.studentDescription,
+    aiConfidence: scenario.analysis.confidence,
+    analysisProvider: "cached",
+    createdAt: now,
+  };
+  const photo: PhotoEvidence = {
+    id: photoId,
+    issueId: issue.id,
+    reportId: report.id,
+    kind: "before",
+    storagePath: scenario.image,
+    createdAt: now,
+  };
+  const event: StatusEvent = {
+    id: `${scenario.id}-event-reported`,
+    issueId: issue.id,
+    actorId: "scout-1",
+    actorRole: "student",
+    fromStatus: null,
+    toStatus: "open",
+    note: `${scenario.locationLabel} · saved classification attached to the selected photo.`,
+    createdAt: now,
+  };
+  persisted = {
+    issues: [...persisted.issues, issue],
+    reports: [...persisted.reports, report],
+    photos: [...persisted.photos, photo],
+    events: [...persisted.events, event],
+    credits: [...persisted.credits, credit("scout-1", issue.id, "first-report", 10, "First report")],
+  };
   return true;
 }
 

@@ -45,6 +45,61 @@ if (!reportingBoundary || !movementBoundary) {
   throw new Error("Campus boundary files are incomplete");
 }
 
+export type ReportLocation = {
+  id: string;
+  name: string;
+  kind: "building" | "path";
+  latitude: number;
+  longitude: number;
+};
+
+function coordinatesOf(value: unknown, coordinates: number[][] = []): number[][] {
+  if (value && typeof value === "object" && "coordinates" in value) {
+    return coordinatesOf((value as { coordinates: unknown }).coordinates, coordinates);
+  }
+  if (!Array.isArray(value)) return coordinates;
+  if (typeof value[0] === "number" && typeof value[1] === "number") {
+    coordinates.push(value as number[]);
+    return coordinates;
+  }
+  for (const child of value) coordinatesOf(child, coordinates);
+  return coordinates;
+}
+
+const buildingReportLocations: ReportLocation[] = [
+  ...landmarks.map((landmark) => ({
+    id: landmark.id,
+    name: landmark.name
+      .replace("Dr. Martin Luther King Jr. Library", "MLK Library")
+      .replace("Charles W. Davidson College of Engineering", "Engineering")
+      .replace("Diaz Compean Student Union", "Student Union"),
+    kind: "building" as const,
+    latitude: landmark.latitude,
+    longitude: landmark.longitude,
+  })),
+  ...namedBuildings
+    .filter((building) => building.band === "campus")
+    .map((building) => ({ ...building, kind: "building" as const })),
+];
+
+const pathReportLocations: ReportLocation[] = [...new Set(pathCollection.features
+  .map((feature) => feature.properties?.name)
+  .filter((name): name is string => typeof name === "string" && name.length > 0))]
+  .flatMap((name) => {
+    const features = pathCollection.features.filter((feature) => feature.properties?.name === name);
+    const coordinates = features.flatMap((feature) => coordinatesOf(feature.geometry));
+    if (coordinates.length === 0) return [];
+    const longitude = coordinates.reduce((sum, coordinate) => sum + coordinate[0], 0) / coordinates.length;
+    const latitude = coordinates.reduce((sum, coordinate) => sum + coordinate[1], 0) / coordinates.length;
+    return isInsideReporting(latitude, longitude)
+      ? [{ id: `path:${name}`, name, kind: "path" as const, latitude, longitude }]
+      : [];
+  });
+
+export const reportLocations: ReportLocation[] = [...buildingReportLocations, ...pathReportLocations]
+  .filter((location) => isInsideReporting(location.latitude, location.longitude))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
 export function movementMask(): Feature<Polygon> {
   const ring = movementBoundary!.geometry.coordinates[0];
   const longitudes = ring.map((coordinate) => coordinate[0]);

@@ -1,10 +1,10 @@
 # Wakefield
 
-When the campus speaks, the campus wakes. This branch is the integrated Wakefield application: a bounded SJSU map, issue reporting, EAiSER analysis boundary, spatial signals, gamification, and a durable local backend.
+When the campus speaks, the campus wakes. Wakefield turns photo-led reports into a campus-wide priority queue, an adaptive map, building health, a repair-and-verification loop, and impact rewards. This is the full Next.js application in the GitHub repository; the optional Studio prototype is a separate static handoff.
 
 ## Setup (Windows)
 
-Use `npm.cmd` and `npx.cmd`. Do not change the execution policy.
+Use `npm.cmd` and `npx.cmd`. Do not change the execution policy. For a one-click Windows start, run `scripts\run-wakefield.cmd`.
 
 ```powershell
 npm.cmd install
@@ -16,9 +16,11 @@ Open http://localhost:3000.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `NEXT_PUBLIC_DATA_MODE` | `live` | `live` uses the integrated same-origin API. Set `mock` only for the offline demo. |
-| `NEXT_PUBLIC_DEMO_MODE` | `true` | Shows the demo controls and the “Demo data” label. |
+| `NEXT_PUBLIC_DATA_MODE` | `mock` | `mock` keeps report state in this browser. `live` routes through the same-origin Next.js API. |
+| `NEXT_PUBLIC_GUIDED_MODE` | `true` | Shows the campus pulse and prepared photo sequence controls. |
 | `NEXT_PUBLIC_API_BASE_URL` | empty | Optional for `live`; empty uses the same-origin Next.js API. |
+
+The old `NEXT_PUBLIC_DEMO_MODE` setting remains accepted for existing local `.env.local` files.
 
 Phone camera tests need a secure context:
 
@@ -46,17 +48,19 @@ Geometry is cached under `src/data/geo` from OpenStreetMap (ODbL). See `src/data
 
 ## Reporting
 
-Report a signal opens the camera (`facingMode: environment`), with a labeled photo upload when the camera is denied or missing. Location is requested only on the confirm step. Pins outside the reporting boundary are rejected. Demo mode can drop a labeled pin on the south side of MLK Library.
+Report a signal offers four prepared campus photos, device upload, and the camera. Prepared photos use saved classifications. Other uploads are attached to the report and start with a manual-review form; they are not described as image analysis unless a live EAiSER provider is configured. Choose a building or walkway from the location list, and the map flies to and highlights that feature. Move the pin to the exact spot if needed; location is not inferred from the image. Category, severity, summary, department, and accessibility impact can be reviewed before saving. Pins outside the campus reporting boundary are rejected.
 
-The live flow uploads the image to the same-origin backend, analyzes it, checks for nearby duplicates, creates a report, and updates the map state. With no external EAiSER provider configured, the backend uses a deterministic `provider: "cached"` result for the demo; this is clearly distinct from a live EAiSER response. Set `NEXT_PUBLIC_DATA_MODE=mock` only for the offline local-store demo.
+The campus pulse can load all four photo-backed reports at once, add independent confirmations, or reset activity. Every open signal receives a priority score based on severity, repeat reports, accessibility impact, response status, and time waiting. Duplicate reports increment its count, raise its place in both queues, and step severity up when a third report arrives. An urgent issue activates immediately. Additional reporters increase the regional activation score without applying building damage twice. Marking an issue fixed keeps damage in place until a student verifies the repair; verification restores health and leaves a green recovered footprint on the map.
 
-## Demo controls
+## Presentation flow and rewards
 
-With `NEXT_PUBLIC_DEMO_MODE=true`, the panel can reset the map, add a Library signal, add a second identity, add a nearby distinct issue, trigger an urgent Engineering leak, or preview reveal levels without writing reports. Reset returns the quiet outline.
+See [docs/PRESENTATION_SCRIPT.md](docs/PRESENTATION_SCRIPT.md) for the ordered picture/location walkthrough and presenter cues.
+
+Reports and points in the default local setup are stored in this browser. Redeeming deducts points and generates a unique Wakefield claim code. The code is currently an in-app claim; campus café and parking providers are not connected to fulfill it externally.
 
 ## Live adapter
 
-Set `NEXT_PUBLIC_DATA_MODE=live` to use the integrated API. Leave `NEXT_PUBLIC_API_BASE_URL` empty for the same-origin routes, or set it when deploying the API separately. Feature components keep calling `getClient()` from `src/lib/api/index.ts`. The live module is the only place that fetches:
+Set `NEXT_PUBLIC_DATA_MODE=live` to use the same-origin API routes. Leave `NEXT_PUBLIC_API_BASE_URL` empty for the same-origin routes, or set it when deploying the API separately. EAiSER credentials remain server-only. Feature components call `getClient()` from `src/lib/api/index.ts`; the live module handles:
 
 - `POST /api/uploads`
 - `POST /api/analyze`
@@ -65,4 +69,4 @@ Set `NEXT_PUBLIC_DATA_MODE=live` to use the integrated API. Leave `NEXT_PUBLIC_A
 - `GET /api/map-state?campusId=sjsu`
 - `GET /api/issues/:issueId`
 
-Phase 2 status updates and verification call the integrated status and verification routes. The local backend persists state under the gitignored `data/` directory. For the real Studio SDK flow, see [`docs/STUDIO_HANDOFF.md`](docs/STUDIO_HANDOFF.md).
+Status updates and repair verification use integrated routes. The local backend persists state under the gitignored `data/` directory. See [docs/STUDIO_HANDOFF.md](docs/STUDIO_HANDOFF.md) for the separate static Studio workflow and its integration limitations.

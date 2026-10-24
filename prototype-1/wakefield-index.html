@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wakefield | SJSU Main Campus</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wake-app">
+    <header class="wake-header">
+      <div class="wake-brand"><strong>Wakefield</strong><span>SJSU / MAIN CAMPUS</span></div>
+      <span class="wake-demo">SJSU CAMPUS</span><span class="wake-open">3 open</span>
+      <div class="wake-health"><span>CAMPUS</span><i><b></b></i><strong>99</strong></div>
+      <button class="wake-points">0 pts</button>
+      <div class="wake-mode"><button class="is-active">Student</button><button>University</button></div>
+    </header>
+
+    <aside class="wake-rail"><button class="is-active" type="button"><b>MAP</b><span>Map</span></button><button type="button"><b>SIG</b><span>Signals</span></button></aside>
+
+    <main class="wake-map" aria-label="Wakefield campus map">
+      <div class="wake-search"><input type="search" placeholder="Search library, tower, engineering..."></div>
+      <div class="wake-controls"><button type="button">+</button><button type="button">-</button><button type="button">R</button><button type="button">O</button><button type="button">Recenter</button></div>
+      <div class="wake-demo-card">Starter signals</div>
+
+      <div class="map-plane" aria-hidden="true">
+        <i class="road road-a"></i><i class="road road-b"></i><i class="road road-c"></i><i class="road road-d"></i>
+        <i class="path path-a"></i><i class="path path-b"></i><i class="path path-c"></i><i class="path path-d"></i>
+        <div class="focus-zone"></div>
+      </div>
+
+      <div class="map-label l-library">MLK Library</div><div class="map-label l-tower">Tower Hall</div><div class="map-label l-engineering">Engineering</div><div class="map-label l-union">Student Union</div><div class="map-label l-art">Art Building</div><div class="map-label l-health">Student Health Center</div><div class="map-label l-village">Campus Village A</div><div class="map-label l-recreation">Spartan Recreation and Aquatic Center</div><div class="map-label l-science">Science Building</div><div class="map-label l-garage">South Parking Garage</div><div class="map-label l-dining">Dining Commons</div><div class="map-label l-memorial">Spartan Memorial</div>
+      <span class="street street-a">SAN FERNANDO ST</span><span class="street street-b">11TH ST</span><span class="street street-c">4TH ST</span><span class="street street-d">SAN SALVADOR ST</span>
+
+      <button class="map-marker marker-main" type="button" aria-label="Open Library signal"><i></i><span>1 signal | Bike and scooter parking</span></button>
+      <button class="map-marker marker-violet" type="button" aria-label="Supporting evidence"><i></i></button>
+      <button class="map-marker marker-urgent" type="button" aria-label="Urgent signal"><i>!</i></button>
+      <span class="you-dot">You</span>
+
+      <section class="wake-legend"><strong>REVEAL</strong><span class="quiet">-- Quiet</span><span class="stirring">-- Stirring</span><span class="active">-- Active</span><span class="urgent">-- Urgent</span><small>Quiet does not mean verified clear.</small></section>
+      <button id="open-report" class="wake-report-button" type="button">[ camera ] Report a signal</button>
+      <p id="report-banner" class="wake-banner" hidden>New signal saved. It is now visible near MLK Library.</p>
+      <span class="wake-compass">N</span><span class="wake-attribution">OpenStreetMap</span>
+    </main>
+
+    <section id="report-modal" class="report-modal" hidden role="dialog" aria-modal="true" aria-label="Report a signal">
+      <div class="report-sheet">
+        <button id="close-report" class="close-report" type="button">Close</button>
+        <div id="report-photo" class="report-step">
+          <p class="step-kicker">NEW SIGNAL</p><h2>Report a signal</h2><p>Attach a photo for a campus signal near MLK Library.</p>
+          <label class="upload-box"><input id="photo-input" type="file" accept="image/*"><span id="photo-name">Choose a photo</span><small>This version stores reports in this browser and does not inspect image contents.</small></label>
+          <button id="analyze-photo" class="primary" type="button" disabled>Review report</button>
+        </div>
+        <div id="report-analysis" class="report-step" hidden>
+          <p class="step-kicker">MANUAL REVIEW</p><h2>Review the photo</h2><p class="analysis-summary">Image contents are not analyzed in this version. Confirm the issue details and location before saving.</p>
+          <dl><div><dt>Severity</dt><dd>Not assigned</dd></div><div><dt>Confidence</dt><dd>Not scored</dd></div><div><dt>Department</dt><dd>Manual review</dd></div><div><dt>Accessibility</dt><dd>Not assessed</dd></div></dl>
+          <button id="review-report" class="primary" type="button">Continue</button>
+        </div>
+        <div id="report-review" class="report-step" hidden>
+          <p class="step-kicker">READY TO SAVE</p><h2>Save this signal</h2><p>This report will be stored in this browser. External campus dispatch is not connected.</p>
+          <label class="route-row"><input type="checkbox" checked> Transportation and Parking Services</label><label class="route-row"><input type="checkbox"> City 311</label>
+          <button id="send-report" class="primary" type="button">Save report</button>
+        </div>
+        <div id="report-success" class="report-step" hidden>
+          <p class="step-kicker">SIGNAL SAVED</p><h2>Report saved</h2><p>Your signal is visible on this Wakefield map. Campus staff have not been notified.</p>
+          <button id="view-signal" class="primary" type="button">View signal</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

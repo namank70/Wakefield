@@ -3,9 +3,10 @@
 import { compressImage } from "@/lib/api/images";
 import { getClient } from "@/lib/api";
 import { categories } from "@/lib/config/display";
-import { dataMode, demoMode } from "@/lib/config/env";
-import { isInsideReporting, nearestLandmark, regionIdFor, seededLibraryPin } from "@/lib/geo/campus";
+import { dataMode, guidedMode } from "@/lib/config/env";
+import { isInsideReporting, nearestLandmark, regionIdFor, reportLocations, seededLibraryPin } from "@/lib/geo/campus";
 import { campusStore } from "@/lib/state/store";
+import { demoScenarios, type DemoScenario } from "@/lib/demo/scenarios";
 import { useCampus } from "@/lib/state/use-campus";
 import type { AnalysisResult, DuplicateSuggestion, UploadProgress } from "@/lib/types";
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +26,7 @@ export function ReportFlow() {
   const [error, setError] = useState<string | null>(null);
   const [photoId, setPhotoId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null);
   const [description, setDescription] = useState("");
   const [suggestion, setSuggestion] = useState<DuplicateSuggestion | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,10 +37,24 @@ export function ReportFlow() {
     };
   }, [preview]);
 
-  function keep(next: Blob) {
+  function keep(next: Blob, scenario: DemoScenario | null = null) {
     if (preview) URL.revokeObjectURL(preview);
     setBlob(next);
     setPreview(URL.createObjectURL(next));
+    setDemoScenario(scenario);
+    if (scenario) {
+      const location = reportLocations.find((item) => item.id === scenario.buildingId);
+      campusStore.setFocusLocation(location ? { id: location.id, name: location.name, kind: location.kind } : null);
+      campusStore.setDraftLocation({
+        latitude: scenario.latitude,
+        longitude: scenario.longitude,
+        accuracy: null,
+        source: "manual",
+      });
+    } else {
+      campusStore.setFocusLocation(null);
+      campusStore.setDraftLocation(null);
+    }
     setError(null);
     setStep("preview");
   }
@@ -56,14 +72,16 @@ export function ReportFlow() {
       const compressed = await compressImage(blob);
       const uploaded = await getClient().uploadPhoto(compressed, setProgress);
       setPhotoId(uploaded.photoId);
-      const result = await getClient().analyzePhoto({
-        photoId: uploaded.photoId,
-        latitude: campus.draftLocation.latitude,
-        longitude: campus.draftLocation.longitude,
-        campusId: "sjsu",
-      });
+      const result = demoScenario
+        ? demoScenario.analysis
+        : await getClient().analyzePhoto({
+          photoId: uploaded.photoId,
+          latitude: campus.draftLocation.latitude,
+          longitude: campus.draftLocation.longitude,
+          campusId: "sjsu",
+        });
       setAnalysis(result);
-      setDescription(result.summary);
+      setDescription(demoScenario?.studentDescription ?? result.summary);
       setStep("analysis");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Upload failed. The photo is still here.");
@@ -105,7 +123,10 @@ export function ReportFlow() {
     }
     setBusy(true);
     try {
-      const building = nearestLandmark(campus.draftLocation.latitude, campus.draftLocation.longitude);
+      const selectedBuilding = campus.focusLocation?.kind === "building" ? campus.focusLocation : null;
+      const building = selectedBuilding
+        ? { id: selectedBuilding.id }
+        : nearestLandmark(campus.draftLocation.latitude, campus.draftLocation.longitude);
       await getClient().createReport({
         campusId: "sjsu",
         regionId: regionIdFor(campus.draftLocation.latitude, campus.draftLocation.longitude),
@@ -146,7 +167,7 @@ export function ReportFlow() {
           </div>
         </div>
       ) : null}
-      {step === "location" ? <LocationStep /> : null}
+      {step === "location" ? <LocationStep scenario={demoScenario} /> : null}
       {step === "upload" ? (
         <p className="font-mono text-sm">
           {progress?.indeterminate || !progress ? "Uploading…" : `Uploading ${Math.round((progress.loaded / Math.max(progress.total, 1)) * 100)}%`}
@@ -167,9 +188,9 @@ export function ReportFlow() {
       ) : null}
       {step === "done" ? (
         <div className="space-y-3">
-          <p>Signal received. The map has not moved.</p>
+          <p>Signal added to your Wakefield workspace. Watch the nearby map region respond.</p>
           <p className="text-sm text-slate-300">
-            {dataMode === "mock" ? "The mock adapter kept the photo in this session only. It is not permanent storage." : "The live adapter sent the report to the configured API."}
+            {dataMode === "mock" ? "Saved to this browser's Wakefield workspace. Campus dispatch is not connected." : "Saved through Wakefield's connected service. The analysis label shows whether the result was prepared or provider-generated."}
           </p>
           <button type="button" onClick={() => { campusStore.viewPendingSignal(); close(); }}>View signal</button>
         </div>
@@ -192,11 +213,24 @@ export function ReportFlow() {
   );
 }
 
-function CameraStage({ onCapture }: { onCapture: (blob: Blob) => void }) {
+function CameraStage({ onCapture }: { onCapture: (blob: Blob, scenario?: DemoScenario | null) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [cameraRequested, setCameraRequested] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+
+  async function loadSample(scenario: DemoScenario) {
+    try {
+      const response = await fetch(scenario.image);
+      if (!response.ok) throw new Error("The sample photo could not be loaded.");
+      onCapture(await response.blob(), scenario);
+    } catch {
+      setMessage("Could not load that sample photo. Try uploading a photo from your device instead.");
+    }
+  }
 
   useEffect(() => {
+    if (!cameraRequested) return;
     let stream: MediaStream | null = null;
     let cancelled = false;
     async function start() {
@@ -213,6 +247,7 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob) => void }) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
+          setCameraReady(true);
         }
       } catch (reason) {
         const name = reason instanceof DOMException ? reason.name : "";
@@ -226,15 +261,24 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob) => void }) {
       cancelled = true;
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [cameraRequested]);
 
   return (
     <div className="space-y-3">
       <video ref={videoRef} className="aspect-[4/3] w-full rounded-md bg-black object-cover" playsInline muted />
+      {!cameraRequested ? <p className="text-xs text-slate-400">Choose a prepared photo, upload an image, or open your camera. Your camera only starts if you ask to open it.</p> : null}
       {message ? <p className="text-sm text-amber">{message}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          onClick={() => setCameraRequested(true)}
+          disabled={cameraRequested}
+        >
+          {cameraRequested ? "Camera starting…" : "Open camera"}
+        </button>
+        <button
+          type="button"
+          disabled={!cameraReady}
           onClick={() => {
             const video = videoRef.current;
             if (!video || !video.videoWidth) return;
@@ -260,13 +304,32 @@ function CameraStage({ onCapture }: { onCapture: (blob: Blob) => void }) {
           />
         </label>
       </div>
+      {guidedMode ? (
+        <div className="wake-sample-set">
+          <div>
+            <p className="wake-sample-kicker">Four prepared campus examples</p>
+            <p className="wake-sample-note">Prepared photo examples use saved classifications. Other uploads need your description and manual review.</p>
+          </div>
+          <div className="wake-sample-grid">
+            {demoScenarios.map((scenario) => (
+              <button key={scenario.id} type="button" className="wake-sample-card" onClick={() => void loadSample(scenario)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={scenario.image} alt="" />
+                <span>{scenario.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function LocationStep() {
+function LocationStep({ scenario }: { scenario: DemoScenario | null }) {
   const campus = useCampus();
-  const [message, setMessage] = useState("Place the pin on the campus map, or use this device's location.");
+  const [message, setMessage] = useState(scenario
+    ? `${scenario.locationLabel}. Confirm or change the location; the photo does not determine it.`
+    : "Choose a building or walkway, place the pin on the map, or use this device's location.");
   const inside = campus.draftLocation ? isInsideReporting(campus.draftLocation.latitude, campus.draftLocation.longitude) : false;
 
   useEffect(() => {
@@ -281,6 +344,7 @@ function LocationStep() {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        campusStore.setFocusLocation(null);
         campusStore.setDraftLocation({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -294,9 +358,37 @@ function LocationStep() {
     );
   }
 
+  function selectPlace(id: string) {
+    const place = reportLocations.find((item) => item.id === id);
+    if (!place) {
+      campusStore.setFocusLocation(null);
+      return;
+    }
+    campusStore.setFocusLocation({ id: place.id, name: place.name, kind: place.kind });
+    campusStore.setDraftLocation({ latitude: place.latitude, longitude: place.longitude, accuracy: null, source: "manual" });
+    campusStore.flyTo(place.latitude, place.longitude, 18.5);
+    setMessage(`${place.name} selected. The ${place.kind === "path" ? "walkway" : "building"} is highlighted on the map; adjust the pin if needed.`);
+  }
+
   return (
     <div className="space-y-3 text-sm">
       <p>{message}</p>
+      <label className="block">
+        Campus location
+        <select className="mt-1 w-full" value={campus.focusLocation?.id ?? ""} onChange={(event) => selectPlace(event.target.value)}>
+          <option value="">Select a building or walkway…</option>
+          <optgroup label="Buildings">
+            {reportLocations.filter((place) => place.kind === "building").map((place) => (
+              <option key={place.id} value={place.id}>{place.name}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Walkways">
+            {reportLocations.filter((place) => place.kind === "path").map((place) => (
+              <option key={place.id} value={place.id}>{place.name}</option>
+            ))}
+          </optgroup>
+        </select>
+      </label>
       {campus.draftLocation ? (
         <p className="font-mono text-xs">
           {campus.draftLocation.latitude.toFixed(5)}, {campus.draftLocation.longitude.toFixed(5)} · {campus.draftLocation.source}
@@ -306,20 +398,24 @@ function LocationStep() {
       ) : null}
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={useDevice}>Use device location</button>
-        {demoMode ? (
+        {guidedMode ? (
           <button
             type="button"
             onClick={() => {
               campusStore.setDraftLocation({
-                latitude: seededLibraryPin.latitude,
-                longitude: seededLibraryPin.longitude,
+                latitude: scenario?.latitude ?? seededLibraryPin.latitude,
+                longitude: scenario?.longitude ?? seededLibraryPin.longitude,
                 accuracy: null,
                 source: "manual",
               });
-              setMessage(`${seededLibraryPin.label}. This is a seeded demo pin, not this device.`);
+              const location = reportLocations.find((item) => item.id === scenario?.buildingId);
+              campusStore.setFocusLocation(location ? { id: location.id, name: location.name, kind: location.kind } : null);
+              setMessage(scenario
+                ? `${scenario.locationLabel}. This suggested location is hand-placed; the photo does not determine it.`
+                : `${seededLibraryPin.label}. This is a suggested campus location, not your device location.`);
             }}
           >
-            Use seeded SJSU location
+            {scenario ? "Use suggested location" : "Use campus starting point"}
           </button>
         ) : null}
       </div>
@@ -340,7 +436,10 @@ function AnalysisStep({
 }) {
   return (
     <form className="space-y-3 text-sm" onSubmit={(event) => event.preventDefault()}>
-      <p className="font-mono text-[11px] uppercase tracking-wider text-cyan">Mock EAiSER output · {analysis.provider}</p>
+      <p className="font-mono text-[11px] uppercase tracking-wider text-cyan">
+        {analysis.provider === "eaiser" ? "EAiSER photo analysis" : analysis.provider === "cached" ? "Prepared photo · saved classification" : "Manual review · no image analysis configured"}
+      </p>
+      {analysis.provider !== "eaiser" ? <p className="text-xs text-slate-400">This is not a live AI result. Prepared photos use saved labels; other uploads need your description and edits before saving.</p> : null}
       <label className="block">
         Category
         <select value={analysis.category} onChange={(event) => onChange({ ...analysis, category: event.target.value })}>

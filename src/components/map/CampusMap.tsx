@@ -1,61 +1,23 @@
 "use client";
 
-import { prototypeRevealResolver, type LocalReveal } from "@/lib/activation/reveal";
-import { categories, colors, mapZoom } from "@/lib/config/display";
-import {
-  buildingCollection,
-  facilityCollection,
-  movementBoundary,
-  movementMask,
-  namedBuildings,
-  nearestLandmark,
-  pathCollection,
-  reportingBoundary,
-  streetLabelCollection,
-  streetLineCollection,
-} from "@/lib/geo/campus";
 import { landmarks } from "@/data/geo/landmarks";
-import { installNavigationLimits, runViewCommand } from "@/lib/map/navigation";
+import { categories, mapZoom } from "@/lib/config/display";
+import { metersBetween } from "@/lib/geo/distance";
+import { movementBoundary, namedBuildings, nearestLandmark, reportingBoundary, streetLabelCollection } from "@/lib/geo/campus";
+import { boundsOf, installNavigationLimits, pitched, prefersReducedMotion, runViewCommand } from "@/lib/map/navigation";
+import { ensureLayers, syncScene } from "@/lib/map/scene";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
 import type { Issue } from "@/lib/types";
-import { metersBetween, metersToGeometry } from "@/lib/geo/distance";
-import type { Feature, Point } from "geojson";
-import L from "leaflet";
-import { useEffect, useMemo, useState } from "react";
-import { MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
+import type { Point } from "geojson";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
-const library = landmarks.find((landmark) => landmark.id === "library")!;
+maplibregl.setWorkerUrl("/maplibre-gl-worker.js");
+import { useEffect, useRef, useState } from "react";
 
 function categoryLabel(id: string | null) {
   return categories.find((category) => category.id === id)?.label ?? "Signal";
-}
-
-function nearLibrary(feature: Feature) {
-  if (feature.properties && "landmarkId" in feature.properties && feature.properties.landmarkId === "library") return true;
-  return metersToGeometry(library.latitude, library.longitude, feature.geometry) <= 55;
-}
-
-function paint(reveal: LocalReveal, kind: "building" | "path" | "boundary") {
-  if (kind === "boundary") {
-    return { color: "#8AA0B8", weight: 1.4, opacity: 0.85, fillOpacity: 0 };
-  }
-  if (reveal.level === 0) {
-    if (kind === "path") return { color: "#8EA3BD", weight: 1.4, opacity: 0.9 };
-    return { color: "#B7C8DC", weight: 1.35, opacity: 0.95, fillColor: colors.background, fillOpacity: 0 };
-  }
-  const color = reveal.urgent ? colors.urgent : reveal.level === 1 ? colors.cyan : reveal.level === 2 ? colors.violet : reveal.level === 3 ? colors.amber : colors.cyan;
-  if (kind === "path") {
-    return { color, weight: reveal.level >= 4 ? 3 : 2, opacity: 0.95, dashArray: reveal.level === 3 ? "7 5" : undefined };
-  }
-  return {
-    color,
-    weight: 1.4 + reveal.level * 0.35,
-    opacity: 1,
-    fillColor: color,
-    fillOpacity: 0.08,
-    dashArray: reveal.level === 3 ? "6 4" : undefined,
-  };
 }
 
 function placeName(latitude: number, longitude: number) {
@@ -65,16 +27,6 @@ function placeName(latitude: number, longitude: number) {
     .replace("Dr. Martin Luther King Jr. Library", "MLK Library")
     .replace("Charles W. Davidson College of Engineering", "Engineering")
     .replace("Diaz Compean Student Union", "Student Union");
-}
-
-function markerIcon(issue: Issue, count: number, selected: boolean) {
-  const countLabel = `${count} signal${count === 1 ? "" : "s"}`;
-  return L.divIcon({
-    className: `wake-marker${selected ? " is-selected" : ""}`,
-    html: `<span class="wake-marker-dot wake-${issue.severity}"></span><span class="wake-marker-copy"><strong>${placeName(issue.latitude, issue.longitude)}</strong><em>${countLabel} · ${categoryLabel(issue.category)}</em></span>`,
-    iconSize: [210, selected ? 58 : 34],
-    iconAnchor: [14, 16],
-  });
 }
 
 function clusterIssues(issues: Issue[], zoom: number) {
@@ -94,271 +46,229 @@ function clusterIssues(issues: Issue[], zoom: number) {
   return [...urgent, ...groups];
 }
 
-function VectorField() {
-  const map = useMap();
-  const campus = useCampus();
-  const signature = `${campus.issues.map((issue) => `${issue.id}:${issue.updatedAt}:${issue.reportCount}`).join("|")}:${campus.previewLevel}:${campus.reports.length}`;
-
-  useEffect(() => {
-    const revealFor = (feature: Feature, kind: "building" | "path" | "facility") => {
-      if (campus.previewLevel !== null && nearLibrary(feature)) {
-        return {
-          level: campus.previewLevel,
-          score: 0,
-          urgent: campus.previewLevel === 4,
-          accessibilityFloor: false,
-          summary: "Visual preview",
-          category: null,
-          severity: null,
-          status: null,
-          issueIds: [],
-        } satisfies LocalReveal;
-      }
-      const properties = feature.properties as { id?: string; landmarkId?: string } | null;
-      return prototypeRevealResolver.resolve(
-        {
-          id: properties?.id ?? String(feature.id ?? ""),
-          kind,
-          geometry: feature.geometry,
-          landmarkId: properties?.landmarkId,
-        },
-        campus.issues,
-        campus.reports,
-      );
-    };
-
-    const frame = L.geoJSON(streetLineCollection, {
-      interactive: false,
-      style: (feature) => {
-        const outer = feature?.properties && "ring" in feature.properties && feature.properties.ring === "outer";
-        return outer
-          ? { color: "#D5E2F2", weight: 2.2, opacity: 0.95 }
-          : { color: "#8EA3BD", weight: 1.2, opacity: 0.55 };
-      },
-    });
-    const mask = L.geoJSON(movementMask(), {
-      interactive: false,
-      style: { stroke: false, fillColor: colors.background, fillOpacity: 1 },
-    });
-    const paths = L.geoJSON(pathCollection, {
-      interactive: false,
-      style: (feature) => paint(feature ? revealFor(feature, "path") : { level: 0 } as LocalReveal, "path"),
-    });
-    const builds = L.geoJSON(buildingCollection, {
-      interactive: false,
-      style: (feature) => {
-        if (feature?.properties && "band" in feature.properties && feature.properties.band === "block") {
-          return { color: "#8EA4BE", weight: 1, opacity: 0.8, fillColor: "#121A2C", fillOpacity: 0.55 };
-        }
-        return paint(feature ? revealFor(feature, "building") : ({ level: 0 } as LocalReveal), "building");
-      },
-    });
-    const limit = L.geoJSON(movementBoundary!, {
-      interactive: false,
-      style: { color: "#243044", weight: 1, opacity: 0.9, fillOpacity: 0, dashArray: "2 6" },
-    });
-    const campusEdge = L.geoJSON(reportingBoundary!, {
-      interactive: false,
-      style: () => paint({ level: 0 } as LocalReveal, "boundary"),
-    });
-    const shownFacilities = {
-      type: "FeatureCollection" as const,
-      features: facilityCollection.features.filter((feature) => {
-        const reveal = revealFor(feature, "facility");
-        return reveal.level >= 3;
-      }),
-    };
-    const facilityLayer = L.geoJSON(shownFacilities, {
-      pointToLayer: (feature, latlng) => {
-        const kind = feature.properties && "kind" in feature.properties ? String(feature.properties.kind) : "entrance";
-        return L.circleMarker(latlng, {
-          radius: 4,
-          color: kind === "bicycle_parking" ? colors.violet : colors.amber,
-          weight: 1.5,
-          fillOpacity: 0.2,
-        });
-      },
-    });
-
-    frame.addTo(map);
-    mask.addTo(map);
-    paths.addTo(map);
-    builds.addTo(map);
-    limit.addTo(map);
-    campusEdge.addTo(map);
-    facilityLayer.addTo(map);
-    return () => {
-      frame.remove();
-      mask.remove();
-      paths.remove();
-      builds.remove();
-      limit.remove();
-      campusEdge.remove();
-      facilityLayer.remove();
-    };
-  }, [map, signature, campus.issues, campus.previewLevel, campus.reports]);
-
-  return null;
-}
-
-function SignalMarkers() {
-  const map = useMap();
-  const campus = useCampus();
-  const [zoom, setZoom] = useState(() => map.getZoom());
-  const groups = useMemo(() => clusterIssues(campus.issues, zoom), [campus.issues, zoom]);
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setZoom(map.getZoom()));
-    return () => cancelAnimationFrame(frame);
-  }, [map]);
-  useMapEvents({
-    zoom: () => setZoom(map.getZoom()),
-    zoomend: () => setZoom(map.getZoom()),
-    click(event) {
-      if (!campusStore.getSnapshot().placingPin) return;
-      campusStore.setDraftLocation({
-        latitude: event.latlng.lat,
-        longitude: event.latlng.lng,
-        accuracy: null,
-        source: "manual",
-      });
-    },
-  });
-
-  return (
-    <>
-      {groups.map((group) => {
-        const issue = group.find((item) => item.severity === "urgent") ?? group[0];
-        const selected = campus.selectedIssueId === issue.id;
-        const showPhoto = group.length === 1 && (selected || zoom >= mapZoom.evidenceAt);
-        const photo = showPhoto ? campus.photos.find((item) => item.issueId === issue.id && campusStore.previewFor(item.id)) : null;
-        const preview = photo ? campusStore.previewFor(photo.id) : null;
-        return (
-          <Marker
-            key={group.map((item) => item.id).join("-")}
-            position={[issue.latitude, issue.longitude]}
-            icon={
-              preview
-                ? L.divIcon({
-                    className: "wake-photo",
-                    html: `<img src="${preview}" alt="" /><span>${issue.severity}</span>`,
-                    iconSize: [88, 72],
-                    iconAnchor: [44, 72],
-                  })
-                : markerIcon(issue, group.length, campus.selectedIssueId === issue.id)
-            }
-            eventHandlers={{
-              click: () => campusStore.selectIssue(issue.id, false),
-            }}
-          />
-        );
-      })}
-      {streetLabelCollection.features.map((feature) => {
-        const coordinates = (feature.geometry as Point).coordinates;
-        const name = String(feature.properties?.name ?? "");
-        return (
-          <Marker
-            key={String(feature.id)}
-            position={[coordinates[1], coordinates[0]]}
-            interactive={false}
-            icon={L.divIcon({
-              className: feature.properties && "edge" in feature.properties && feature.properties.edge === "outer" ? "wake-street is-outer" : "wake-street",
-              html: `<span>${name}</span>`,
-              iconSize: [120, 18],
-              iconAnchor: [60, 9],
-            })}
-          />
-        );
-      })}
-      {namedBuildings
-        .filter((building) => zoom >= (building.band === "block" ? mapZoom.namesAt + 1.5 : mapZoom.namesAt))
-        .map((building) => (
-            <Marker
-              key={building.id}
-              position={[building.latitude, building.longitude]}
-              interactive={false}
-              icon={L.divIcon({
-                className: building.band === "block" ? "wake-building is-block" : "wake-building",
-                html: `<span>${building.name}</span>`,
-                iconSize: [150, 16],
-                iconAnchor: [75, 8],
-              })}
-            />
-          ))}
-      {landmarks.map((landmark) => (
-        <Marker
-          key={landmark.id}
-          position={[landmark.latitude, landmark.longitude]}
-          interactive={false}
-          icon={L.divIcon({
-            className: "wake-landmark",
-            html: `<span>${landmark.name.replace("Dr. Martin Luther King Jr. Library", "MLK Library").replace("Charles W. Davidson College of Engineering", "Engineering").replace("Diaz Compean Student Union", "Student Union")}</span>`,
-            iconSize: [160, 18],
-            iconAnchor: [80, 28],
-          })}
-        />
-      ))}
-      {campus.draftLocation ? (
-        <Marker
-          draggable
-          position={[campus.draftLocation.latitude, campus.draftLocation.longitude]}
-          icon={L.divIcon({
-            className: "wake-pin",
-            html: `<span></span>`,
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-          })}
-          eventHandlers={{
-            dragend(event) {
-              const latlng = event.target.getLatLng();
-              campusStore.setDraftLocation({
-                latitude: latlng.lat,
-                longitude: latlng.lng,
-                accuracy: null,
-                source: "manual",
-              });
-            },
-          }}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function NavigationLock() {
-  const map = useMap();
-  const campus = useCampus();
-
-  useEffect(() => installNavigationLimits(map, movementBoundary!, reportingBoundary!), [map]);
-
-  useEffect(() => {
-    const command = campus.viewCommand;
-    if (!command || !reportingBoundary) return;
-    runViewCommand(map, command, reportingBoundary);
-  }, [campus.viewCommand, map]);
-
-  return null;
+function textNode(className: string, text: string) {
+  const element = document.createElement("div");
+  element.className = className;
+  const span = document.createElement("span");
+  span.textContent = text;
+  element.append(span);
+  return element;
 }
 
 export default function CampusMap() {
-  const center = L.geoJSON(reportingBoundary!).getBounds().getCenter();
-  return (
-    <MapContainer
-      center={center}
-      zoom={16}
-      minZoom={15}
-      maxZoom={mapZoom.max}
-      maxBounds={L.geoJSON(movementBoundary!).getBounds()}
-      maxBoundsViscosity={1}
-      zoomControl={false}
-      attributionControl={false}
-      worldCopyJump={false}
-      bounceAtZoomLimits={false}
-      zoomSnap={0.25}
-      className="h-full w-full"
-    >
-      <NavigationLock />
-      <VectorField />
-      <SignalMarkers />
-    </MapContainer>
-  );
+  const campus = useCampus();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const [ready, setReady] = useState(false);
+  const [zoom, setZoom] = useState(15);
+  const signature = `${campus.issues.map((issue) => `${issue.id}:${issue.updatedAt}:${issue.reportCount}:${issue.severity}:${issue.status}:${issue.regionId}`).join("|")}:${campus.previewLevel}:${campus.reports.length}`;
+
+  useEffect(() => {
+    const node = containerRef.current;
+    const reporting = reportingBoundary;
+    const movement = movementBoundary;
+    if (!node || !reporting || !movement) return;
+    const area = boundsOf(reporting);
+    const west = area[0][0];
+    const south = area[0][1];
+    const east = area[1][0];
+    const north = area[1][1];
+    const pose = pitched();
+    const map = new maplibregl.Map({
+      container: node,
+      style: {
+        version: 8,
+        sources: {},
+        layers: [{ id: "background", type: "background", paint: { "background-color": "#070B14" } }],
+      },
+      center: [(west + east) / 2, (south + north) / 2],
+      zoom: 15.2,
+      bearing: pose.bearing,
+      pitch: pose.pitch,
+      maxPitch: pose.pitch === 0 ? 0 : 60,
+      attributionControl: false,
+      maxZoom: mapZoom.max,
+      renderWorldCopies: false,
+      dragRotate: false,
+      touchPitch: false,
+      fadeDuration: prefersReducedMotion() ? 0 : 300,
+    });
+    map.touchZoomRotate.disableRotation();
+    mapRef.current = map;
+    let stopLimits = () => {};
+    let alive = true;
+    map.on("load", () => {
+      if (!alive) return;
+      ensureLayers(map);
+      stopLimits = installNavigationLimits(map, movement, reporting);
+      setZoom(map.getZoom());
+      setReady(true);
+    });
+    map.on("zoomend", () => setZoom(map.getZoom()));
+    map.on("click", (event) => {
+      if (!campusStore.getSnapshot().placingPin) return;
+      const target = event.originalEvent.target;
+      if (target instanceof Element && target.closest("button")) return;
+      campusStore.setDraftLocation({
+        latitude: event.lngLat.lat,
+        longitude: event.lngLat.lng,
+        accuracy: null,
+        source: "manual",
+      });
+    });
+    return () => {
+      alive = false;
+      stopLimits();
+      map.remove();
+      mapRef.current = null;
+      setReady(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    syncScene(map, { issues: campus.issues, reports: campus.reports, previewLevel: campus.previewLevel }, prefersReducedMotion());
+  }, [ready, signature, campus.issues, campus.reports, campus.previewLevel]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const reporting = reportingBoundary;
+    if (!ready || !map || !campus.viewCommand || !reporting) return;
+    runViewCommand(map, campus.viewCommand, reporting);
+  }, [ready, campus.viewCommand]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const markers: maplibregl.Marker[] = [];
+    const add = (
+      element: HTMLElement,
+      longitude: number,
+      latitude: number,
+      anchor: maplibregl.PositionAnchor = "center",
+      offset?: [number, number],
+    ) => {
+      markers.push(new maplibregl.Marker({ element, anchor, offset }).setLngLat([longitude, latitude]).addTo(map));
+    };
+
+    for (const group of clusterIssues(campus.issues, zoom)) {
+      const issue = group.find((item) => item.severity === "urgent") ?? group[0];
+      const selected = campus.selectedIssueId === issue.id;
+      const photo = group.length === 1 && (selected || zoom >= mapZoom.evidenceAt)
+        ? campus.photos.find((item) => item.issueId === issue.id && campusStore.previewFor(item.id))
+        : null;
+      const preview = photo ? campusStore.previewFor(photo.id) : null;
+      if (preview) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "wake-photo";
+        const image = document.createElement("img");
+        image.src = preview;
+        image.alt = "Evidence for this signal";
+        const caption = document.createElement("span");
+        caption.textContent = issue.severity;
+        button.append(image, caption);
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          campusStore.selectIssue(issue.id, false);
+        });
+        add(button, issue.longitude, issue.latitude, "bottom");
+      } else if (selected) {
+        const card = document.createElement("div");
+        card.className = `wake-callout${issue.severity === "urgent" ? " is-urgent" : ""}`;
+        const place = document.createElement("strong");
+        place.textContent = placeName(issue.latitude, issue.longitude);
+        const meta = document.createElement("span");
+        const reports = group.reduce((sum, item) => sum + item.reportCount, 0);
+        meta.textContent = `${reports} report${reports === 1 ? "" : "s"} · ${group.length} open`;
+        card.append(place, meta);
+        const anchor = document.createElement("div");
+        anchor.append(card);
+        add(anchor, issue.longitude, issue.latitude, "bottom", [0, -16]);
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "wake-marker is-selected";
+        dot.setAttribute("aria-label", placeName(issue.latitude, issue.longitude));
+        const mark = document.createElement("span");
+        mark.className = `wake-marker-dot wake-${issue.severity}`;
+        dot.append(mark);
+        dot.addEventListener("click", (event) => {
+          event.stopPropagation();
+          campusStore.selectIssue(issue.id, false);
+        });
+        add(dot, issue.longitude, issue.latitude, "center");
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "wake-marker";
+        const mark = document.createElement("span");
+        mark.className = `wake-marker-dot wake-${issue.severity}`;
+        const copy = document.createElement("span");
+        copy.className = "wake-marker-copy";
+        const title = document.createElement("strong");
+        title.textContent = placeName(issue.latitude, issue.longitude);
+        const detail = document.createElement("em");
+        detail.textContent = `${group.length} signal${group.length === 1 ? "" : "s"} · ${categoryLabel(issue.category)}`;
+        copy.append(title, detail);
+        button.append(mark, copy);
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          campusStore.selectIssue(issue.id, false);
+        });
+        add(button, issue.longitude, issue.latitude, "left");
+      }
+    }
+
+    for (const feature of streetLabelCollection.features) {
+      const coordinates = (feature.geometry as Point).coordinates;
+      const outer = feature.properties && "edge" in feature.properties && feature.properties.edge === "outer";
+      add(textNode(outer ? "wake-street is-outer" : "wake-street", String(feature.properties?.name ?? "")), coordinates[0], coordinates[1]);
+    }
+
+    for (const building of namedBuildings) {
+      if (zoom < (building.band === "block" ? mapZoom.namesAt + 1.5 : mapZoom.namesAt)) continue;
+      add(textNode(building.band === "block" ? "wake-building is-block" : "wake-building", building.name), building.longitude, building.latitude);
+    }
+
+    for (const landmark of landmarks) {
+      add(
+        textNode(
+          "wake-landmark",
+          landmark.name
+            .replace("Dr. Martin Luther King Jr. Library", "MLK Library")
+            .replace("Charles W. Davidson College of Engineering", "Engineering")
+            .replace("Diaz Compean Student Union", "Student Union"),
+        ),
+        landmark.longitude,
+        landmark.latitude,
+      );
+    }
+
+    if (campus.draftLocation) {
+      const pin = document.createElement("div");
+      pin.className = "wake-pin";
+      const span = document.createElement("span");
+      pin.append(span);
+      const marker = new maplibregl.Marker({ element: pin, anchor: "center", draggable: true })
+        .setLngLat([campus.draftLocation.longitude, campus.draftLocation.latitude])
+        .addTo(map);
+      marker.on("dragend", () => {
+        const next = marker.getLngLat();
+        campusStore.setDraftLocation({
+          latitude: next.lat,
+          longitude: next.lng,
+          accuracy: null,
+          source: "manual",
+        });
+      });
+      markers.push(marker);
+    }
+
+    return () => {
+      for (const marker of markers) marker.remove();
+    };
+  }, [ready, zoom, campus.issues, campus.selectedIssueId, campus.photos, campus.draftLocation]);
+
+  return <div ref={containerRef} className="wake-map" />;
 }

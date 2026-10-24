@@ -5,7 +5,6 @@ import { IssueDrawer } from "@/components/issues/IssueDrawer";
 import { SignalList } from "@/components/issues/SignalList";
 import { ReportFlow } from "@/components/report/ReportFlow";
 import { landmarks } from "@/data/geo/landmarks";
-import { revealLabels } from "@/lib/config/display";
 import { demoMode } from "@/lib/config/env";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
@@ -61,6 +60,7 @@ export function AppShell() {
       <div className="absolute inset-0">
         <CampusMap />
       </div>
+      <div className="wake-wash" aria-hidden="true" />
       <div className="wake-vignette" aria-hidden="true" />
       <div className="wake-compass" aria-hidden="true">
         <span>N</span>
@@ -99,10 +99,11 @@ export function AppShell() {
       </div>
       <div className={`wake-legend ${selected ? "max-md:hidden" : ""}`}>
         <p className="font-mono text-[10px] uppercase tracking-wider">Reveal</p>
-        {([0, 1, 2, 3, 4] as const).map((level) => (
-          <p key={level}><i className={`swatch level-${level}`} /> {revealLabels[level]}</p>
-        ))}
+        <p><i className="swatch quiet" /> Quiet</p>
+        <p><i className="swatch stirring" /> Stirring</p>
+        <p><i className="swatch active" /> Active</p>
         <p><i className="swatch urgent" /> Urgent</p>
+        <p className="wake-legend-note">Quiet does not mean verified clear.</p>
       </div>
       <button type="button" className={`wake-camera ${selected ? "above-sheet" : ""}`} onClick={() => campusStore.openReport()}>
         <Camera size={18} />

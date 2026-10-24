@@ -37,8 +37,25 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
           <X size={16} />
         </button>
       </div>
-      <p className="wake-chip">
-        {labelFor(issue.category)} · {severityLabels[issue.severity]} · {issue.reportCount} signal{issue.reportCount === 1 ? "" : "s"}
+      <div className="space-y-2">
+        {photos.map((photo) => {
+          const url = campusStore.previewFor(photo.id);
+          return url ? (
+            // Session blob URLs cannot go through next/image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={photo.id} src={url} alt="Evidence captured this session" className="max-h-48 w-full rounded-md object-cover" />
+          ) : (
+            <p key={photo.id} className="font-mono text-xs text-slate-400">
+              Photo preview is kept for this browser session only.
+            </p>
+          );
+        })}
+        {photos.length === 0 ? <p className="font-mono text-xs text-slate-400">No photo is attached to this signal.</p> : null}
+      </div>
+      <p className="mt-3 flex flex-wrap gap-2">
+        <span className="wake-chip">{labelFor(issue.category)}</span>
+        <span className="wake-chip">{severityLabels[issue.severity]} impact</span>
+        <span className={`wake-status is-${issue.status}`}>{issue.status.replaceAll("_", " ")}</span>
       </p>
       <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
         <div>
@@ -86,21 +103,6 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
           </dd>
         </div>
       </dl>
-      <div className="mt-4 space-y-2">
-        {photos.map((photo) => {
-          const url = campusStore.previewFor(photo.id);
-          return url ? (
-            // Session blob URLs cannot go through next/image.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={photo.id} src={url} alt="Evidence captured this session" className="max-h-48 w-full rounded-md object-cover" />
-          ) : (
-            <p key={photo.id} className="font-mono text-xs text-slate-400">
-              Photo preview is kept for this browser session only.
-            </p>
-          );
-        })}
-        {photos.length === 0 ? <p className="font-mono text-xs text-slate-400">No photo is attached to this signal.</p> : null}
-      </div>
       <h3 className="mt-5 font-display text-base">Evidence timeline</h3>
       <ol className="mt-2 space-y-3">
         {timeline.map((item) => (

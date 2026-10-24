@@ -80,6 +80,20 @@ export const mapZoom = {
   max: 20,
 };
 
+export const cameraView = {
+  pitch: 50,
+  bearing: 18,
+};
+
+/** Visual scale for the pitched map, not surveyed building heights. */
+export const extrusionMeters: Record<RevealLevel, number> = {
+  0: 0,
+  1: 12,
+  2: 18,
+  3: 36,
+  4: 48,
+};
+
 export const colors = {
   background: "#070B14",
   panel: "#10182A",

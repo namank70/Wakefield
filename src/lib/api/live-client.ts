@@ -44,7 +44,6 @@ import type {
  */
 
 function base() {
-  if (!apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL is not set.");
   return apiBaseUrl.replace(/\/$/, "");
 }
 
@@ -76,11 +75,10 @@ function putWithProgress(url: string, file: Blob, onProgress: (update: UploadPro
 
 export const liveClient: WakefieldClient = {
   async uploadPhoto(file, onProgress) {
-    const response = await fetch(`${base()}/api/uploads`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentType: file.type || "image/jpeg", campusId: "sjsu" }),
-    });
+    const body = new FormData();
+    body.set("campusId", "sjsu");
+    body.set("image", file, "campus-report.jpg");
+    const response = await fetch(`${base()}/api/uploads`, { method: "POST", body });
     if (!response.ok) await readError(response);
     const payload = (await response.json()) as { photoId: string; imagePath: string; uploadUrl?: string };
     if (payload.uploadUrl) await putWithProgress(payload.uploadUrl, file, onProgress);

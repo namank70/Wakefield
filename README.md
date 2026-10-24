@@ -16,7 +16,7 @@ Open http://localhost:3000.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `NEXT_PUBLIC_DATA_MODE` | `mock` | `mock` uses local state. `live` uses `src/lib/api/live-client.ts`. |
+| `NEXT_PUBLIC_DATA_MODE` | `live` | `live` uses the integrated same-origin API. Set `mock` only for the offline demo. |
 | `NEXT_PUBLIC_DEMO_MODE` | `true` | Shows the demo controls and the “Demo data” label. |
 | `NEXT_PUBLIC_API_BASE_URL` | empty | Required only when the data mode is `live`. |
 

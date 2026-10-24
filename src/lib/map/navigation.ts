@@ -1,4 +1,4 @@
-import type { GeoJsonObject } from "geojson";
+import type { Feature, FeatureCollection, GeoJsonObject, Geometry } from "geojson";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { cameraView, mapZoom } from "@/lib/config/display";
 
@@ -21,11 +21,13 @@ export function boundsOf(geometry: GeoJsonObject): [[number, number], [number, n
   };
   const walk = (value: GeoJsonObject) => {
     if (value.type === "Feature") {
-      if (value.geometry) walk(value.geometry);
+      const feature = value as Feature;
+      if (feature.geometry) walk(feature.geometry as Geometry);
       return;
     }
     if (value.type === "FeatureCollection") {
-      for (const feature of value.features) walk(feature);
+      const collection = value as FeatureCollection;
+      for (const feature of collection.features) walk(feature);
       return;
     }
     if ("coordinates" in value) visit(value.coordinates);

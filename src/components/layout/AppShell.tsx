@@ -38,7 +38,8 @@ export function AppShell() {
         </div>
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan">{demoMode ? "Demo data" : "Campus listening"}</p>
         <p className="font-mono text-[11px] text-slate-300">{openCount} open</p>
-        <div className="ml-auto flex gap-1 md:hidden">
+        <p className="ml-auto hidden font-mono text-[11px] uppercase tracking-[0.18em] text-slate-300 md:block">The campus wakes in layers</p>
+        <div className="ml-auto flex gap-1 md:ml-0 md:hidden">
           <button type="button" className="wake-icon-button" aria-label="Map" onClick={() => campusStore.setPanel("map")}>
             <MapIcon size={16} />
           </button>
@@ -59,6 +60,10 @@ export function AppShell() {
       </nav>
       <div className="absolute inset-0">
         <CampusMap />
+      </div>
+      <div className="wake-vignette" aria-hidden="true" />
+      <div className="wake-compass" aria-hidden="true">
+        <span>N</span>
       </div>
       <div className="wake-search">
         <label className="sr-only" htmlFor="building-search">Search buildings</label>

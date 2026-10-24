@@ -3,20 +3,39 @@ import buildings from "@/data/geo/buildings.json";
 import facilities from "@/data/geo/facilities.json";
 import paths from "@/data/geo/paths.json";
 import streets from "@/data/geo/streets.json";
+import streetLines from "@/data/geo/street-lines.json";
 import { landmarks, seededLibraryPin } from "@/data/geo/landmarks";
 import { regionNames } from "@/lib/config/display";
 import type { Feature, FeatureCollection, Polygon } from "geojson";
-import { booleanPointInPolygon, distance, point, polygon } from "@turf/turf";
+import { booleanPointInPolygon, centroid, distance, point, polygon } from "@turf/turf";
 
 export { landmarks, seededLibraryPin };
 
-type Props = { id?: string; name?: string | null; landmarkId?: string; kind?: string; edge?: string; amenity?: string | null; entrance?: string | null };
+type Props = {
+  id?: string;
+  name?: string | null;
+  landmarkId?: string;
+  kind?: string;
+  edge?: string;
+  ring?: string;
+  band?: string;
+  amenity?: string | null;
+  entrance?: string | null;
+};
 
 export const boundaryCollection = boundaries as unknown as FeatureCollection<Polygon, Props>;
 export const buildingCollection = buildings as unknown as FeatureCollection<Polygon, Props>;
 export const pathCollection = paths as unknown as FeatureCollection;
 export const facilityCollection = facilities as unknown as FeatureCollection;
 export const streetLabelCollection = streets as unknown as FeatureCollection;
+export const streetLineCollection = streetLines as unknown as FeatureCollection;
+
+export const namedBuildings = buildingCollection.features.flatMap((feature) => {
+  const name = feature.properties?.name;
+  if (!name || feature.properties?.landmarkId) return [];
+  const [longitude, latitude] = centroid(feature).geometry.coordinates;
+  return [{ id: String(feature.id ?? name), name, longitude, latitude, band: feature.properties?.band ?? "campus" }];
+});
 
 export const reportingBoundary = boundaryCollection.features.find((feature) => feature.properties?.id === "reporting-boundary");
 export const movementBoundary = boundaryCollection.features.find((feature) => feature.properties?.id === "movement-boundary");

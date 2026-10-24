@@ -7,9 +7,12 @@ import {
   facilityCollection,
   movementBoundary,
   movementMask,
+  namedBuildings,
+  nearestLandmark,
   pathCollection,
   reportingBoundary,
   streetLabelCollection,
+  streetLineCollection,
 } from "@/lib/geo/campus";
 import { landmarks } from "@/data/geo/landmarks";
 import { installNavigationLimits, runViewCommand } from "@/lib/map/navigation";
@@ -55,13 +58,22 @@ function paint(reveal: LocalReveal, kind: "building" | "path" | "boundary") {
   };
 }
 
-function markerIcon(issue: Issue, count: number) {
-  const label = count > 1 ? `${count} signals` : `${issue.severity} · ${categoryLabel(issue.category)}`;
+function placeName(latitude: number, longitude: number) {
+  const landmark = nearestLandmark(latitude, longitude, 180);
+  const name = landmark?.name ?? "Main Campus";
+  return name
+    .replace("Dr. Martin Luther King Jr. Library", "MLK Library")
+    .replace("Charles W. Davidson College of Engineering", "Engineering")
+    .replace("Diaz Compean Student Union", "Student Union");
+}
+
+function markerIcon(issue: Issue, count: number, selected: boolean) {
+  const countLabel = `${count} signal${count === 1 ? "" : "s"}`;
   return L.divIcon({
-    className: "wake-marker",
-    html: `<span class="wake-marker-dot wake-${issue.severity}"></span><span>${label}</span>`,
-    iconSize: [168, 28],
-    iconAnchor: [12, 14],
+    className: `wake-marker${selected ? " is-selected" : ""}`,
+    html: `<span class="wake-marker-dot wake-${issue.severity}"></span><span class="wake-marker-copy"><strong>${placeName(issue.latitude, issue.longitude)}</strong><em>${countLabel} · ${categoryLabel(issue.category)}</em></span>`,
+    iconSize: [210, selected ? 58 : 34],
+    iconAnchor: [14, 16],
   });
 }
 
@@ -115,6 +127,15 @@ function VectorField() {
       );
     };
 
+    const frame = L.geoJSON(streetLineCollection, {
+      interactive: false,
+      style: (feature) => {
+        const outer = feature?.properties && "ring" in feature.properties && feature.properties.ring === "outer";
+        return outer
+          ? { color: "#D5E2F2", weight: 2.2, opacity: 0.95 }
+          : { color: "#8EA3BD", weight: 1.2, opacity: 0.55 };
+      },
+    });
     const mask = L.geoJSON(movementMask(), {
       interactive: false,
       style: { stroke: false, fillColor: colors.background, fillOpacity: 1 },
@@ -125,7 +146,12 @@ function VectorField() {
     });
     const builds = L.geoJSON(buildingCollection, {
       interactive: false,
-      style: (feature) => paint(feature ? revealFor(feature, "building") : { level: 0 } as LocalReveal, "building"),
+      style: (feature) => {
+        if (feature?.properties && "band" in feature.properties && feature.properties.band === "block") {
+          return { color: "#8EA4BE", weight: 1, opacity: 0.8, fillColor: "#121A2C", fillOpacity: 0.55 };
+        }
+        return paint(feature ? revealFor(feature, "building") : ({ level: 0 } as LocalReveal), "building");
+      },
     });
     const limit = L.geoJSON(movementBoundary!, {
       interactive: false,
@@ -154,6 +180,7 @@ function VectorField() {
       },
     });
 
+    frame.addTo(map);
     mask.addTo(map);
     paths.addTo(map);
     builds.addTo(map);
@@ -161,6 +188,7 @@ function VectorField() {
     campusEdge.addTo(map);
     facilityLayer.addTo(map);
     return () => {
+      frame.remove();
       mask.remove();
       paths.remove();
       builds.remove();
@@ -178,7 +206,12 @@ function SignalMarkers() {
   const campus = useCampus();
   const [zoom, setZoom] = useState(() => map.getZoom());
   const groups = useMemo(() => clusterIssues(campus.issues, zoom), [campus.issues, zoom]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setZoom(map.getZoom()));
+    return () => cancelAnimationFrame(frame);
+  }, [map]);
   useMapEvents({
+    zoom: () => setZoom(map.getZoom()),
     zoomend: () => setZoom(map.getZoom()),
     click(event) {
       if (!campusStore.getSnapshot().placingPin) return;
@@ -195,7 +228,8 @@ function SignalMarkers() {
     <>
       {groups.map((group) => {
         const issue = group.find((item) => item.severity === "urgent") ?? group[0];
-        const showPhoto = group.length === 1 && zoom >= mapZoom.evidenceAt;
+        const selected = campus.selectedIssueId === issue.id;
+        const showPhoto = group.length === 1 && (selected || zoom >= mapZoom.evidenceAt);
         const photo = showPhoto ? campus.photos.find((item) => item.issueId === issue.id && campusStore.previewFor(item.id)) : null;
         const preview = photo ? campusStore.previewFor(photo.id) : null;
         return (
@@ -210,7 +244,7 @@ function SignalMarkers() {
                     iconSize: [88, 72],
                     iconAnchor: [44, 72],
                   })
-                : markerIcon(issue, group.length)
+                : markerIcon(issue, group.length, campus.selectedIssueId === issue.id)
             }
             eventHandlers={{
               click: () => campusStore.selectIssue(issue.id, false),
@@ -227,7 +261,7 @@ function SignalMarkers() {
             position={[coordinates[1], coordinates[0]]}
             interactive={false}
             icon={L.divIcon({
-              className: "wake-street",
+              className: feature.properties && "edge" in feature.properties && feature.properties.edge === "outer" ? "wake-street is-outer" : "wake-street",
               html: `<span>${name}</span>`,
               iconSize: [120, 18],
               iconAnchor: [60, 9],
@@ -235,6 +269,21 @@ function SignalMarkers() {
           />
         );
       })}
+      {namedBuildings
+        .filter((building) => zoom >= (building.band === "block" ? mapZoom.namesAt + 1.5 : mapZoom.namesAt))
+        .map((building) => (
+            <Marker
+              key={building.id}
+              position={[building.latitude, building.longitude]}
+              interactive={false}
+              icon={L.divIcon({
+                className: building.band === "block" ? "wake-building is-block" : "wake-building",
+                html: `<span>${building.name}</span>`,
+                iconSize: [150, 16],
+                iconAnchor: [75, 8],
+              })}
+            />
+          ))}
       {landmarks.map((landmark) => (
         <Marker
           key={landmark.id}

@@ -1,6 +1,7 @@
 "use client";
 
 import { categories, severityLabels } from "@/lib/config/display";
+import { nearestLandmark, regionNameFor } from "@/lib/geo/campus";
 import { campusStore } from "@/lib/state/store";
 import { useCampus } from "@/lib/state/use-campus";
 import type { Issue } from "@/lib/types";
@@ -16,6 +17,9 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
   const events = campus.events.filter((event) => event.issueId === issue.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const photos = campus.photos.filter((photo) => photo.issueId === issue.id);
   const identities = new Set(reports.map((report) => report.reporterId)).size;
+  const nearby = nearestLandmark(issue.latitude, issue.longitude, 180);
+  const place = nearby?.name ?? regionNameFor(issue.regionId);
+  const opened = reports[0]?.createdAt ?? issue.createdAt;
   const timeline = [
     ...events.map((event) => ({ id: event.id, at: event.createdAt, text: event.note })),
     ...reports.map((report) => ({
@@ -28,15 +32,15 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
   return (
     <aside className="wake-drawer" aria-label="Signal detail">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-cyan">Signal</p>
-          <h2 className="font-display text-xl leading-tight">{issue.summary}</h2>
-        </div>
+        <h2 className="text-balance font-display text-xl leading-tight">{issue.summary}</h2>
         <button type="button" className="wake-icon-button" aria-label="Close signal" onClick={() => campusStore.selectIssue(null)}>
           <X size={16} />
         </button>
       </div>
-      <dl className="grid grid-cols-2 gap-2 text-sm">
+      <p className="wake-chip">
+        {labelFor(issue.category)} · {severityLabels[issue.severity]} · {issue.reportCount} signal{issue.reportCount === 1 ? "" : "s"}
+      </p>
+      <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
         <div>
           <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Severity</dt>
           <dd>{severityLabels[issue.severity]}</dd>
@@ -47,7 +51,7 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
         </div>
         <div>
           <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Place</dt>
-          <dd>{issue.buildingId ?? issue.regionId}</dd>
+          <dd>{place}</dd>
         </div>
         <div>
           <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Reports</dt>
@@ -67,6 +71,20 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
           <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Status</dt>
           <dd className="capitalize">{issue.status.replaceAll("_", " ")}</dd>
         </div>
+        <div>
+          <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Opened</dt>
+          <dd>{new Date(opened).toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Updated</dt>
+          <dd>{new Date(issue.updatedAt).toLocaleString()}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Pin</dt>
+          <dd className="font-mono text-xs">
+            {issue.latitude.toFixed(5)}, {issue.longitude.toFixed(5)}
+          </dd>
+        </div>
       </dl>
       <div className="mt-4 space-y-2">
         {photos.map((photo) => {
@@ -83,17 +101,19 @@ export function IssueDrawer({ issue }: { issue: Issue }) {
         })}
         {photos.length === 0 ? <p className="font-mono text-xs text-slate-400">No photo is attached to this signal.</p> : null}
       </div>
-      <h3 className="mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">Evidence timeline</h3>
-      <ol className="mt-2 space-y-2">
+      <h3 className="mt-5 font-display text-base">Evidence timeline</h3>
+      <ol className="mt-2 space-y-3">
         {timeline.map((item) => (
-          <li key={item.id} className="border-l border-slate-600 pl-3">
+          <li key={item.id}>
             <p className="font-mono text-[10px] text-slate-400">{new Date(item.at).toLocaleString()}</p>
             <p className="text-sm">{item.text}</p>
           </li>
         ))}
       </ol>
       <p className="mt-4 text-sm text-slate-300">
-        {issue.severity === "urgent" ? "Open. Urgent signals show local context immediately." : "Open. No response has been recorded in this demo."}
+        {issue.severity === "urgent"
+          ? "Urgent signals open the nearby paths and building outline immediately. The rest of campus stays quiet."
+          : "This signal reveals its immediate context. A quiet block still means few recent reports, not a verified safe route."}
       </p>
     </aside>
   );

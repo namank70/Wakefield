@@ -26,11 +26,32 @@ summary,
   padding: 0.45rem 0.7rem;
   font: inherit;
   cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+button:hover,
+summary:hover {
+  background: #1c2942;
 }
 
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #26d9ff;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #26d9ff;
+  color: #071018;
 }
 
 input,
@@ -52,6 +73,7 @@ textarea {
 
 .font-mono {
   font-family: var(--font-mono), "IBM Plex Mono", monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .leaflet-container {
@@ -193,6 +215,10 @@ textarea {
 .swatch.level-4 { border-top-color: #26d9ff; border-top-width: 3px; }
 .swatch.urgent { border-top-color: #ff4057; border-top-width: 3px; }
 
+.wake-camera:hover {
+  background: #7ee8ff;
+}
+
 .wake-camera {
   left: 50%;
   bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -229,10 +255,13 @@ textarea {
   background: #10182a;
   border-top: 1px solid rgb(255 255 255 / 10%);
   border-radius: 16px 16px 0 0;
+  overscroll-behavior: contain;
+  animation: wake-sheet 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (min-width: 768px) {
   .wake-drawer {
+    animation-name: wake-panel;
     top: 3.5rem;
     right: 0;
     bottom: 0;
@@ -343,22 +372,44 @@ textarea {
 
 .wake-marker {
   display: flex;
-  gap: 0.3rem;
-  align-items: center;
+  gap: 0.45rem;
+  align-items: flex-start;
   width: max-content !important;
   color: #e8eef7;
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
   text-shadow: 0 1px 2px #070b14;
+}
+
+.wake-marker-copy {
+  display: flex;
+  flex-direction: column;
+  padding: 0.15rem 0.4rem;
+  background: rgb(16 24 42 / 88%);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.28);
+}
+
+.wake-marker-copy em {
+  font-style: normal;
+  color: #c5d4e6;
+  font-size: 11px;
+}
+
+.wake-marker.is-selected .wake-marker-copy {
+  border: 1px solid #26d9ff;
 }
 
 .wake-marker-dot,
 .wake-pin span {
   width: 12px;
   height: 12px;
+  margin-top: 0.2rem;
   border: 2px solid white;
   border-radius: 999px;
   background: #26d9ff;
+  box-shadow: 0 0 0 0 rgb(38 217 255 / 0.55);
+  animation: wake-pulse 2.4s ease-out infinite;
 }
 
 .wake-low { background: #8aa0b8; }
@@ -381,6 +432,96 @@ textarea {
   text-transform: none;
   font-family: var(--font-display), sans-serif;
   font-size: 13px;
+}
+
+.wake-street.is-outer span {
+  color: #f4f8fc;
+  font-size: 12px;
+}
+
+.wake-building {
+  pointer-events: none;
+  background: transparent;
+  border: 0;
+}
+
+.wake-building span {
+  display: block;
+  overflow: hidden;
+  color: #e7eef8;
+  font-family: var(--font-display), sans-serif;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #070b14;
+}
+
+.wake-building.is-block span {
+  color: #b7c6d8;
+  font-size: 10px;
+}
+
+.wake-chip {
+  display: inline-flex;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgb(38 217 255 / 14%);
+  color: #d7f6ff;
+  font-size: 0.78rem;
+}
+
+.wake-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  background: radial-gradient(120% 85% at 50% 48%, transparent 58%, rgb(7 11 20 / 0.42) 100%);
+}
+
+.wake-compass {
+  position: absolute;
+  z-index: 30;
+  right: 0.8rem;
+  bottom: calc(2.6rem + env(safe-area-inset-bottom));
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-items: center;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 28%, #24344f, #0c1424 68%);
+  box-shadow: 0 10px 18px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.22);
+  transform: perspective(80px) rotateX(18deg);
+}
+
+.wake-compass span {
+  color: #f4f8fc;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.85rem;
+}
+
+.wake-compass::after {
+  content: "";
+  position: absolute;
+  top: 0.32rem;
+  width: 2px;
+  height: 0.45rem;
+  border-radius: 1px;
+  background: #26d9ff;
+}
+
+@keyframes wake-pulse {
+  70% { box-shadow: 0 0 0 10px rgb(38 217 255 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(38 217 255 / 0); }
+}
+
+@keyframes wake-sheet {
+  from { transform: translateY(16px); }
+  to { transform: none; }
+}
+
+@keyframes wake-panel {
+  from { transform: translateX(18px); }
+  to { transform: none; }
 }
 
 .wake-photo img {

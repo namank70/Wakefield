@@ -9,10 +9,11 @@ Query endpoint: Overpass API. The app reads the files in this folder and does no
 
 ## What was saved
 
-- Building footprints and pathway centerlines are clipped to the reporting boundary so the one-block margin stays dark. City buildings and sidewalks outside campus are not drawn.
+- Campus building footprints and pathway centerlines are clipped to the reporting boundary.
+- The one-block margin keeps the buildings whose centroids fall between the reporting boundary and the movement boundary, plus the named street centerlines, so the surrounding block stays readable.
+- Perimeter labels: San Fernando, San Salvador, 4th, 10th, and the outer streets Santa Clara, William, 3rd, and 11th.
 - Engineering region from the OpenStreetMap relation for the Charles W. Davidson College of Engineering (relation 22601).
 - Pathway centerlines tagged footway, path, pedestrian, steps, or cycleway.
-- Perimeter label points for San Fernando Street, San Salvador Street, 4th Street, and 10th Street.
 - Mapped entrances: 49. Mapped bicycle parking features: 12.
 
 ## Boundaries

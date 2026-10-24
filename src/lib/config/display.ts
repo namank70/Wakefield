@@ -75,6 +75,7 @@ export const severityLabels: Record<Severity, string> = {
 
 export const mapZoom = {
   clusterBelow: 17,
+  namesAt: 16,
   evidenceAt: 18,
   max: 20,
 };

@@ -423,6 +423,17 @@ if (engineeringFeature && !buildings.some((feature) => feature.properties.osmId 
 const clippedBuildings = buildings
   .map((feature) => clipPolygon(feature, reporting))
   .filter(Boolean);
+for (const feature of clippedBuildings) feature.properties.band = "campus";
+
+const contextBuildings = buildings
+  .map((feature) => {
+    const clipped = clipPolygon(feature, movement);
+    if (!clipped) return null;
+    if (turf.booleanPointInPolygon(turf.centroid(clipped), reporting)) return null;
+    clipped.properties = { ...clipped.properties, band: "block" };
+    return clipped;
+  })
+  .filter(Boolean);
 const clippedPaths = paths.map((feature) => clipLine(feature, reporting)).filter(Boolean);
 const clippedFacilities = facilities.filter((feature) => {
   const point =
@@ -449,7 +460,7 @@ const labelPoints = labelSpecs.map(([key, name, edge, index]) => {
   };
 });
 
-writeJson("buildings.json", collection(clippedBuildings));
+writeJson("buildings.json", collection([...clippedBuildings, ...contextBuildings]));
 writeJson("paths.json", collection(clippedPaths));
 writeJson("facilities.json", collection(clippedFacilities));
 writeJson(
@@ -460,7 +471,33 @@ writeJson(
     ...regionFeatures,
   ]),
 );
-writeJson("streets.json", collection(labelPoints));
+const outerLabels = [
+  ["santa-clara", "Santa Clara St", movementRing[0], movementRing[1]],
+  ["11th", "11th St", movementRing[1], movementRing[2]],
+  ["william", "William St", movementRing[3], movementRing[4]],
+  ["3rd", "3rd St", movementRing[4], movementRing[0]],
+].map(([key, name, start, end]) => ({
+  type: "Feature",
+  id: `label-outer-${key}`,
+  properties: { id: `label-outer-${key}`, name, edge: "outer" },
+  geometry: { type: "Point", coordinates: [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2] },
+}));
+writeJson("streets.json", collection([...labelPoints, ...outerLabels]));
+
+const outerKeys = new Set(["santa-clara", "william", "3rd", "11th"]);
+const frameFeatures = [];
+for (const [key, line] of Object.entries(streetLines)) {
+  if (!line) continue;
+  flattenLines(line.geometry ?? line).forEach((part, index) => {
+    frameFeatures.push({
+      type: "Feature",
+      id: `street-${key}-${index}`,
+      properties: { id: `street-${key}-${index}`, name: key, ring: outerKeys.has(key) ? "outer" : "edge" },
+      geometry: part.geometry,
+    });
+  });
+}
+writeJson("street-lines.json", collection(frameFeatures));
 
 for (const record of landmarkRecords) {
   const point = turf.point([record.longitude, record.latitude]);
@@ -517,10 +554,11 @@ Query endpoint: Overpass API. The app reads the files in this folder and does no
 
 ## What was saved
 
-- Building footprints and pathway centerlines are clipped to the reporting boundary so the one-block margin stays dark. City buildings and sidewalks outside campus are not drawn.
+- Campus building footprints and pathway centerlines are clipped to the reporting boundary.
+- The one-block margin keeps the buildings whose centroids fall between the reporting boundary and the movement boundary, plus the named street centerlines, so the surrounding block stays readable.
+- Perimeter labels: San Fernando, San Salvador, 4th, 10th, and the outer streets Santa Clara, William, 3rd, and 11th.
 - Engineering region from the OpenStreetMap relation for the Charles W. Davidson College of Engineering (relation 22601).
 - Pathway centerlines tagged footway, path, pedestrian, steps, or cycleway.
-- Perimeter label points for San Fernando Street, San Salvador Street, 4th Street, and 10th Street.
 - Mapped entrances: ${entranceCount}. Mapped bicycle parking features: ${bikeCount}.
 
 ## Boundaries
@@ -554,5 +592,5 @@ writeFileSync(join(geoDir, "SOURCE.md"), source);
 console.log("landmarks", landmarkRecords);
 console.log("reporting", reportingRing);
 console.log("movement", movementRing);
-console.log("buildings", clippedBuildings.length, "paths", clippedPaths.length, "facilities", clippedFacilities.length);
+console.log("buildings", clippedBuildings.length, "context", contextBuildings.length, "streets", frameFeatures.length, "paths", clippedPaths.length, "facilities", clippedFacilities.length);
 console.log("entrances", entranceCount, "bicycle parking", bikeCount);
